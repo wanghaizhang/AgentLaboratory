@@ -1,0 +1,49 @@
+# 任意模型名版（不再限定 inference.py 里那 9 个字面量）
+# 用 OpenAI 兼容端点：本地 vLLM / Ollama / LM Studio / 自建网关都可用。
+# 跑前设置环境变量（PowerShell）:
+#   $env:LOCAL_BASE_URL = "http://127.0.0.1:11434/v1"     # 或 vLLM 的 http://127.0.0.1:8000/v1
+#   $env:LOCAL_MODEL    = "qwen3:8b"                      # 你服务的真实模型名
+#   $env:LOCAL_API_KEY  = "not-needed"                    # 本地服务通常不需要 key
+# 注意: copilot_mode / load-previous 与 copilot-mode / load-existing 现在两种写法都认（parse_yaml 已修）。
+
+copilot_mode: False
+
+research-topic: "Your goal is to design reasoning and prompt engineering techniques to maximize accuracy on the entire 500 test questions of MATH500 benchmark."
+
+api-key: "not-needed"
+
+# llm-backend 现在可以是任意模型名，走通用分支（base_url 由 LOCAL_BASE_URL 决定）
+llm-backend: "local"
+lit-review-backend: "local"
+
+language: "English"
+
+num-papers-lit-review: 5
+num-papers-to-write: 1
+parallel-labs: False
+
+mlesolver-max-steps: 3
+papersolver-max-steps: 1
+lab-index: 1
+load-existing: False
+except-if-fail: True
+compile-latex: False
+
+# 关键: 生成的实验代码调用的是 utils.py 里的函数（execute_code 会 prepend `from utils import *`），
+# 所以必须在 notes 里明确指示用 query_local，否则模型会继续写 query_gpt4omini。
+task-notes:
+  plan-formulation:
+    - 'Come up with a plan for ONE experiment only. Submit the plan soon.'
+  data-preparation:
+    - 'You must evaluate on the entire 500 test questions of MATH-500.'
+    - 'Here is a sample code to load MATH\nfrom datasets import load_dataset\nMATH_test_set = load_dataset("HuggingFaceH4/MATH-500")["test"]'
+  running-experiments:
+    - "For all strings you instantiate you must use triple quotes (''')."
+    - 'Use the local model through utils: response = query_local(prompt=prompt, system=system_prompt, temperature=0.7). Do NOT call query_gpt4omini.'
+    - "Your code should parallelize inference."
+    - "Use is_equiv() to evaluate if two answers are equivalent."
+    - "Keep the experiment small: a local model is slow; evaluate on a subset first, then the full test set."
+  results-interpretation:
+    - 'Report accuracy on the full test set and compare with the stated baseline.'
+  report-writing:
+    - 'Keep figures simple; matplotlib is available with the Agg backend.'

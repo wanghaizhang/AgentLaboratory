@@ -72,6 +72,34 @@ def query_gpt4omini(prompt, system, api_key, attempt=0, temperature=0.0):
         return query_gpt4omini(prompt, system, attempt+1)
 
 
+def query_local(prompt, system, api_key=None, attempt=0, temperature=0.0):
+    """走 OpenAI 兼容端点（本地 vLLM / Ollama / LM Studio / 自定义网关）。
+    环境变量：LOCAL_BASE_URL（或 OPENAI_BASE_URL）、LOCAL_MODEL、LOCAL_API_KEY。
+    生成的实验代码可以直接调用它——execute_code 会在代码前加 `from utils import *`。"""
+    try:
+        base_url = os.getenv("LOCAL_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+        key = api_key or os.getenv("LOCAL_API_KEY") or os.getenv("OPENAI_API_KEY") or "not-needed"
+        client = OpenAI(api_key=key, base_url=base_url) if base_url else OpenAI()
+        if system:
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ]
+        else:
+            messages = [{"role": "user", "content": prompt}]
+        response = client.chat.completions.create(
+            model=os.getenv("LOCAL_MODEL") or "local",
+            messages=messages,
+            stream=False, temperature=temperature,
+        )
+        content = getattr(response.choices[0].message, "content", None)
+        return (content or getattr(response.choices[0].message, "reasoning_content", None) or "").strip()
+    except Exception as e:
+        print(f"Query local error: {e}")
+        if attempt >= 10: return f"Your attempt to inference the local model failed: {e}"
+        return query_local(prompt, system, api_key, attempt+1, temperature)
+
+
 
 def query_gpt4o(prompt, system, api_key, attempt=0, temperature=0.0):
     try:

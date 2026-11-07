@@ -668,9 +668,12 @@ def parse_yaml(yaml_file_loc):
     class YamlDataHolder:
         def __init__(self): pass
     parser = YamlDataHolder()
+    # 兼容两种写法：下划线（代码原键名）与连字符（示例 yaml 与 CLI 风格）
     if "copilot_mode" in agentlab_data: parser.copilot_mode = agentlab_data["copilot_mode"]
+    elif "copilot-mode" in agentlab_data: parser.copilot_mode = agentlab_data["copilot-mode"]
     else: parser.copilot_mode = False
     if 'load-previous' in agentlab_data: parser.load_previous = agentlab_data["load-previous"]
+    elif 'load-existing' in agentlab_data: parser.load_previous = agentlab_data["load-existing"]
     else: parser.load_previous = False
     if 'research-topic' in agentlab_data: parser.research_topic = agentlab_data["research-topic"]
     if 'api-key' in agentlab_data: parser.api_key = agentlab_data["api-key"]

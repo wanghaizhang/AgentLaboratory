@@ -30,14 +30,30 @@ def curr_cost_est():
         "o1": 60.00 / 1000000,
         "o3-mini": 4.40 / 1000000,
     }
-    return sum([costmap_in[_]*TOKENS_IN[_] for _ in TOKENS_IN]) + sum([costmap_out[_]*TOKENS_OUT[_] for _ in TOKENS_OUT])
+    return sum([costmap_in.get(_, 0.0)*TOKENS_IN[_] for _ in TOKENS_IN]) + sum([costmap_out.get(_, 0.0)*TOKENS_OUT[_] for _ in TOKENS_OUT])
+
+def _openai_client(api_key=None):
+    """OpenAI 兼容端点客户端：LOCAL_BASE_URL / OPENAI_BASE_URL 决定目标（本地 vLLM、Ollama、LM Studio 或自定义网关）。
+    未设置 base_url 时退回官方 OpenAI。"""
+    base_url = os.getenv("LOCAL_BASE_URL") or os.getenv("OPENAI_BASE_URL")
+    key = api_key or os.getenv("LOCAL_API_KEY") or os.getenv("OPENAI_API_KEY") or "not-needed"
+    return OpenAI(api_key=key, base_url=base_url) if base_url else OpenAI()
+
+def _extract_content(msg):
+    """兼容部分推理模型 content 为空、只有 reasoning_content 的情况。"""
+    content = getattr(msg, "content", None)
+    if content:
+        return content
+    return getattr(msg, "reasoning_content", None) or ""
 
 def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_api_key=None,  anthropic_api_key=None, tries=5, timeout=5.0, temp=None, print_cost=True, version="1.5"):
     preloaded_api = os.getenv('OPENAI_API_KEY')
     if openai_api_key is None and preloaded_api is not None:
         openai_api_key = preloaded_api
     if openai_api_key is None and anthropic_api_key is None:
-        raise Exception("No API key provided in query_model function")
+        # 本地 OpenAI 兼容端点不需要真 key；只有完全没有 key 也没有本地端点配置时才报错
+        if not (os.getenv("LOCAL_BASE_URL") or os.getenv("OPENAI_BASE_URL") or os.getenv("LOCAL_MODEL")):
+            raise Exception("No API key provided in query_model function")
     if openai_api_key is not None:
         openai.api_key = openai_api_key
         os.environ["OPENAI_API_KEY"] = openai_api_key
@@ -187,13 +203,34 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                         model="o1-preview", messages=messages)
                 answer = completion.choices[0].message.content
 
+            else:
+                # 通用分支：任意模型名都可用（本地 vLLM / Ollama / LM Studio / 自定义 OpenAI 兼容网关）。
+                # 模型名取 LOCAL_MODEL，未设置则直接用传入的 model_str。
+                client = _openai_client(openai_api_key)
+                model_name = os.getenv("LOCAL_MODEL") or model_str
+                if system_prompt:
+                    messages = [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}]
+                else:
+                    messages = [{"role": "user", "content": prompt}]
+                if temp is None:
+                    completion = client.chat.completions.create(model=model_name, messages=messages)
+                else:
+                    completion = client.chat.completions.create(model=model_name, messages=messages, temperature=temp)
+                answer = _extract_content(completion.choices[0].message)
+
             try:
                 if model_str in ["o1-preview", "o1-mini", "claude-3.5-sonnet", "o1", "o3-mini"]:
                     encoding = tiktoken.encoding_for_model("gpt-4o")
                 elif model_str in ["deepseek-chat"]:
                     encoding = tiktoken.encoding_for_model("cl100k_base")
                 else:
-                    encoding = tiktoken.encoding_for_model(model_str)
+                    try:
+                        encoding = tiktoken.encoding_for_model(model_str)
+                    except Exception:
+                        # 本地/第三方模型没有 tiktoken 映射，退回 cl100k_base（只用于成本估算，非精确）
+                        encoding = tiktoken.get_encoding("cl100k_base")
                 if model_str not in TOKENS_IN:
                     TOKENS_IN[model_str] = 0
                     TOKENS_OUT[model_str] = 0
