@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import date
 from common_imports import *
 from mlesolver import MLESolver
+from judge import Judge, load_checks
 import argparse, pickle, yaml
 
 GLOBAL_AGENTRXIV = None
@@ -17,7 +18,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, judge=None, judge_compare=False):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -91,7 +92,9 @@ class LaboratoryWorkflow:
 
         self.save = True
         self.verbose = True
-        self.reviewers = ReviewersAgent(model=self.model_backbone, notes=self.notes, openai_api_key=self.openai_api_key)
+        self.judge = judge if judge is not None else Judge(mode="llm")
+        self.judge_compare = judge_compare
+        self.reviewers = ReviewersAgent(model=self.model_backbone, notes=self.notes, openai_api_key=self.openai_api_key, judge=self.judge, judge_compare=self.judge_compare)
         self.phd = PhDStudentAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
         self.postdoc = PostdocAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
         self.professor = ProfessorAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
@@ -248,7 +251,7 @@ class LaboratoryWorkflow:
         # instantiate mle-solver
         from papersolver import PaperSolver
         self.reference_papers = []
-        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=compile_pdf, save_loc=self.lab_dir)
+        solver = PaperSolver(notes=report_notes, max_steps=self.papersolver_max_steps, plan=self.phd.plan, exp_code=self.phd.results_code, exp_results=self.phd.exp_results, insights=self.phd.interpretation, lit_review=self.phd.lit_review, ref_papers=self.reference_papers, topic=research_topic, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["report writing"], compile_pdf=compile_pdf, save_loc=self.lab_dir, judge=self.judge, judge_compare=self.judge_compare)
         # run initialization for solver
         solver.initial_solve()
         # run solver for N mle optimization steps
@@ -316,7 +319,7 @@ class LaboratoryWorkflow:
         experiment_notes = [_note["note"] for _note in self.ml_engineer.notes if "running experiments" in _note["phases"]]
         experiment_notes = f"Notes for the task objective: {experiment_notes}\n" if len(experiment_notes) > 0 else ""
         # instantiate mle-solver
-        solver = MLESolver(dataset_code=self.ml_engineer.dataset_code, notes=experiment_notes, insights=self.ml_engineer.lit_review_sum, max_steps=self.mlesolver_max_steps, plan=self.ml_engineer.plan, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["running experiments"])
+        solver = MLESolver(dataset_code=self.ml_engineer.dataset_code, notes=experiment_notes, insights=self.ml_engineer.lit_review_sum, max_steps=self.mlesolver_max_steps, plan=self.ml_engineer.plan, openai_api_key=self.openai_api_key, llm_str=self.model_backbone["running experiments"], judge=self.judge, judge_compare=self.judge_compare)
         # run initialization for solver
         solver.initial_solve()
         # run solver for N mle optimization steps
@@ -709,6 +712,16 @@ def parse_yaml(yaml_file_loc):
     if 'agentrxiv-papers' in agentlab_data: parser.agentrxiv_papers = agentlab_data["agentrxiv-papers"]
     else:  parser.agentrxiv_papers = 5
 
+    # 裁判层：objective（程序校验）优先，human 次之，llm 自评只是兜底
+    if 'judge' in agentlab_data: parser.judge = agentlab_data["judge"]
+    else: parser.judge = "llm"
+    if 'checks' in agentlab_data: parser.checks = agentlab_data["checks"]
+    else: parser.checks = None
+    if 'judge-checklist' in agentlab_data: parser.judge_checklist = agentlab_data["judge-checklist"]
+    else: parser.judge_checklist = []
+    if 'judge-compare' in agentlab_data: parser.judge_compare = agentlab_data["judge-compare"]
+    else: parser.judge_compare = False
+
     if 'lab-index' in agentlab_data: parser.lab_index = agentlab_data["lab-index"]
     else: parser.lab_index = 0
     return parser
@@ -764,6 +777,13 @@ if __name__ == "__main__":
             "note": f"You should always write in the following language to converse and to write the report {args.language}"},
         )
 
+    judge_mode = str(args.judge).lower()
+    judge_compare = str(args.judge_compare).lower() == "true" if type(args.judge_compare) == str else bool(args.judge_compare)
+    checks_fn = load_checks(args.checks)
+    if judge_mode == "objective" and checks_fn is None:
+        print("[judge] objective 模式但没有可执行的 checks 文件，实际会回退到 LLM 自评")
+    judge_instance = Judge(mode=judge_mode, checks=checks_fn, checklist=args.judge_checklist, record=[])
+
     human_in_loop = {
         "literature review":      human_mode,
         "plan formulation":       human_mode,
@@ -814,7 +834,9 @@ if __name__ == "__main__":
                     except_if_fail=except_if_fail,
                     lab_dir=lab_dir,
                     agentRxiv=True,
-                    agentrxiv_papers=args.agentrxiv_papers
+                    agentrxiv_papers=args.agentrxiv_papers,
+                    judge=judge_instance,
+                    judge_compare=judge_compare
                 )
                 lab_instance.perform_research()
                 time_str += str(time.time() - time_now) + " | "
@@ -859,7 +881,9 @@ if __name__ == "__main__":
                 except_if_fail=except_if_fail,
                 agentRxiv=False,
                 lab_index=lab_index,
-                lab_dir=f"./{lab_direct}"
+                lab_dir=f"./{lab_direct}",
+                judge=judge_instance,
+                judge_compare=judge_compare
             )
             lab.perform_research()
             time_str += str(time.time() - time_now) + " | "

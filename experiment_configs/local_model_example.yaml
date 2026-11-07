@@ -4,7 +4,7 @@
 #   $env:LOCAL_BASE_URL = "http://127.0.0.1:11434/v1"     # 或 vLLM 的 http://127.0.0.1:8000/v1
 #   $env:LOCAL_MODEL    = "qwen3:8b"                      # 你服务的真实模型名
 #   $env:LOCAL_API_KEY  = "not-needed"                    # 本地服务通常不需要 key
-# 注意: copilot_mode / load-previous 与 copilot-mode / load-existing 现在两种写法都认（parse_yaml 已修）。
+# Note: copilot_mode / load-previous and copilot-mode / load-existing are both accepted (parse_yaml fixed).
 
 copilot_mode: False
 
@@ -28,6 +28,15 @@ lab-index: 1
 load-existing: False
 except-if-fail: True
 compile-latex: False
+
+# Judge layer: objective (program check) first -> human checklist -> llm self-score as fallback.
+# When a checks file is present the check wins; it falls back only if the check cannot run.
+judge: "objective"
+checks: "checks_example.py"
+judge-compare: True          # record objective vs llm score for the same candidate (judge inflation)
+judge-checklist:
+  - "did the experiment evaluate the full test set stated in the plan, not a subset"
+  - "does the output contain the metric value the plan promised"
 
 # 关键: 生成的实验代码调用的是 utils.py 里的函数（execute_code 会 prepend `from utils import *`），
 # 所以必须在 notes 里明确指示用 query_local，否则模型会继续写 query_gpt4omini。

@@ -8,6 +8,7 @@ from pathlib import Path
 from copy import deepcopy
 from common_imports import *
 from agents import get_score
+from judge import Judge
 from abc import abstractmethod
 
 from contextlib import contextmanager
@@ -235,7 +236,7 @@ Please make sure the abstract reads smoothly and is well-motivated. This should 
 }
 
 class PaperSolver:
-    def __init__(self, llm_str, notes=None, max_steps=10, insights=None, plan=None, exp_code=None, exp_results=None, lit_review=None, ref_papers=None, topic=None, openai_api_key=None, compile_pdf=True, save_loc=None):
+    def __init__(self, llm_str, notes=None, max_steps=10, insights=None, plan=None, exp_code=None, exp_results=None, lit_review=None, ref_papers=None, topic=None, openai_api_key=None, compile_pdf=True, save_loc=None, judge=None, judge_compare=False):
         self.supress_print = True
         if notes is None: self.notes = []
         else: self.notes = notes
@@ -256,6 +257,9 @@ class PaperSolver:
         self.save_loc = save_loc
         self.compile_pdf = compile_pdf
         self.llm_str = llm_str
+        self.judge = judge if judge is not None else Judge(mode="llm")
+        self.judge.bind_llm(lambda plan, artifact, run_return: get_score(plan, artifact, run_return, reward_model_llm=self.llm_str, openai_api_key=self.openai_api_key))
+        self.judge_compare = judge_compare
         self.notes = notes
         self.max_papers = 1
         self.st_hist_len = 10
@@ -430,7 +434,7 @@ class PaperSolver:
                         else:
                             paper_lines = copy(args[1]) #
                             if scoring:
-                                score, cmd_str, is_valid = get_score(self.plan, "\n".join(paper_lines), reward_model_llm=self.llm_str)
+                                score, cmd_str, is_valid = self.judge.evaluate(self.plan, "\n".join(paper_lines), "", compare=self.judge_compare)
                             else:
                                 score, cmd_str, is_valid = 0.0, "Paper scored successfully", True
                             if is_valid: failed = False
@@ -452,7 +456,7 @@ class PaperSolver:
                     if success:
                         paper_lines = copy(args[0]) #
                         if scoring:
-                            score, cmd_str, is_valid = get_score(self.plan, "\n".join(paper_lines), reward_model_llm=self.llm_str)
+                            score, cmd_str, is_valid = self.judge.evaluate(self.plan, "\n".join(paper_lines), "", compare=self.judge_compare)
                         else:
                             score, cmd_str, is_valid = 0.0, "Paper scored successfully", True
                         if is_valid: failed = False

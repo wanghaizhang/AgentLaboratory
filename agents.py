@@ -1,6 +1,7 @@
 from utils import *
 from tools import *
 from inference import *
+from judge import Judge
 import random, string
 
 
@@ -182,13 +183,19 @@ def get_score(outlined_plan, latex, reward_model_llm, reviewer_type=None, attemp
 
 
 class ReviewersAgent:
-    def __init__(self, model="gpt-4o-mini", notes=None, openai_api_key=None):
+    def __init__(self, model="gpt-4o-mini", notes=None, openai_api_key=None, judge=None, judge_compare=False):
         if notes is None: self.notes = []
         else: self.notes = notes
         self.model = model
         self.openai_api_key = openai_api_key
+        self.judge = judge
+        self.judge_compare = judge_compare
 
     def inference(self, plan, report):
+        if self.judge is not None:
+            self.judge.bind_llm(lambda p, artifact, run_return: get_score(p, artifact, run_return, reward_model_llm=self.model, openai_api_key=self.openai_api_key))
+            score, message, is_valid = self.judge.evaluate(plan, report, "", compare=self.judge_compare)
+            return f"Judge [{self.judge.mode}]: score={score} valid={is_valid}\n{message}"
         reviewer_1 = "You are a harsh but fair reviewer and expect good experiments that lead to insights for the research topic."
         review_1 = get_score(outlined_plan=plan, latex=report, reward_model_llm=self.model, reviewer_type=reviewer_1, openai_api_key=self.openai_api_key)
 

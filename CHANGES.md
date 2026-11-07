@@ -23,7 +23,25 @@
 - `readme/README-chinese.md` 同步同一两节。
 - `README.md` 与中文版此前已新增 `### 🧩 Any model / local model` 节（环境变量表、行为说明、`requirements.txt` 缺 `flask`/`flask_sqlalchemy`/`sentence-transformers` 的提醒）。
 
+## 2026-11-07 · 裁判层可注入（feat/judge-injection）
+
+| 文件 | 改动 | 原因 | 验证 |
+|---|---|---|---|
+| `judge.py`（新增） | `Judge` 三模式 objective / human / llm，优先级固定 objective → human → llm；`load_checks(path)` 动态加载 checks 文件；`record` 记录每次打分的 (mode, score, candidate)，`diff_report()` 对比客观分与 LLM 自评差值 | 原 `get_score` 只有 LLM 自评，裁判无法换成程序校验或人工 | `py -3 test_judge.py` 10 组断言 PASS（纯标准库，离线可跑） |
+| `test_judge.py`（新增） | 离线自检：objective pass/fail、优先级不被覆盖、human y/n/0.7 映射、human 不可用时兜底、check 抛异常视为 invalid、无裁判时 score=None、compare 记录差值不改返回值、`bind_llm` 不覆盖已有绑定 | 无网络无依赖也能验证裁判层 | 同上，全部 PASS |
+| `agents.py` / `papersolver.py` / `mlesolver.py` | `get_score` 调用点改为 `self.judge.evaluate(...)`，`bind_llm` 保留原 LLM 自评实现；调用点仍用 `is_valid` 决定是否进入修复循环 | 保持原行为兼容：invalid 分由调用方的 `GLOBAL_REPAIR_ATTEMPTS` 修复循环处理 | `py -3 -m py_compile` 全文件通过；调用点逐处核对（mlesolver.py:362/389/481、papersolver.py:437/459、agents.py:197） |
+| `ai_lab_repo.py` | `parse_yaml` 新增 `judge` / `checks` / `judge-checklist` / `judge-compare`；main 中构造 `Judge`，objective 模式但 checks 不可用时打印提示并实际回退 llm | 让裁判模式可由 yaml 配置 | `py -3 test_yaml_keys.py` PASS；`test_local_dispatch.py` PASS |
+| `experiment_configs/local_model_example.yaml` | 新增 `judge: "objective"`、`checks`、`judge-compare`、`judge-checklist` 示例 | 给出可照抄的裁判配置 | 解析层自检（test_yaml_keys.py） |
+| `checks_example.py`（新增） | checks 文件示例：`check(artifact, run_return) -> (bool, float)` | 说明客观校验的接口契约 | 与 test_judge.py 同一契约 |
+
+### 失败与弯路（已修）
+
+- `evaluate` 的 objective 分支写成提前 `return`，导致 `compare=True` 不再记录 LLM 自评：`test_judge.py` 用例 8 报 `AssertionError: gap should be -0.2, got []`。改为 `if/elif` 单链 + `source` 标记后通过。
+- 同一写法还有第二个隐患：objective 有效时若 `mode == "human"`，人类打分会覆盖客观分（优先级被破坏）。`if/elif` 单链修掉了它，新增用例 10 覆盖（objective 有效 + mode=human → 仍取 0.8，record 只有 objective）。
+- 用例 6 语义明确化：check 抛异常时 `score` 必须是 `None` 而非 `0.0`（对应旧的格式门禁失败），且不做兜底；record 只含 objective。
+
 ## 未做（登记为待办）
+
 
 - `requirements.txt` 未补 `flask`、`flask_sqlalchemy`、`sentence-transformers`（`ai_lab_repo.py` 会 `from app import *`）。
 - 真正的端点连通性未验证（需先确认出站 TLS 与依赖安装）。

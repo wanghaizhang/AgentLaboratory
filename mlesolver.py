@@ -8,6 +8,7 @@ from abc import abstractmethod
 from tools import *
 from inference import *
 from pathlib import Path
+from judge import Judge
 
 
 from contextlib import contextmanager
@@ -201,7 +202,7 @@ def code_repair(code, error, ctype, REPAIR_LLM, openai_api_key=None):
 
 
 class MLESolver:
-    def __init__(self, dataset_code, openai_api_key=None, notes=None, max_steps=10, insights=None, plan=None, llm_str=None):
+    def __init__(self, dataset_code, openai_api_key=None, notes=None, max_steps=10, insights=None, plan=None, llm_str=None, judge=None, judge_compare=False):
         self.supress_print = False
         if notes is None: self.notes = []
         else: self.notes = notes
@@ -221,6 +222,9 @@ class MLESolver:
         self.prev_code_ret = str()
         self.should_execute_code = True
         self.openai_api_key = openai_api_key
+        self.judge = judge if judge is not None else Judge(mode="llm")
+        self.judge.bind_llm(lambda plan, artifact, run_return: get_score(plan, artifact, run_return, openai_api_key=self.openai_api_key, REWARD_MODEL_LLM=self.llm_str))
+        self.judge_compare = judge_compare
 
     def initial_solve(self):
         """
@@ -355,7 +359,7 @@ class MLESolver:
                             code_err = f"Return from executing code: {cmd_return[2]}"
                             if cmd_return[0]:  # if success
                                 code_lines = copy(cmd_return[1])
-                                score, cmd_str, is_valid = get_score(self.plan, "\n".join(code_lines), cmd_return[2], openai_api_key=self.openai_api_key, REWARD_MODEL_LLM=self.llm_str)
+                                score, cmd_str, is_valid = self.judge.evaluate(self.plan, "\n".join(code_lines), cmd_return[2], compare=self.judge_compare)
                                 if is_valid:
                                     failed = False
                                     break
@@ -382,7 +386,7 @@ class MLESolver:
                         code_err = f"Return from executing code: {args[1]}"
                         if success:
                             code_lines = copy(args[0])
-                            score, cmd_str, is_valid = get_score(self.plan, "\n".join(code_lines), args[1], openai_api_key=self.openai_api_key, REWARD_MODEL_LLM=self.llm_str)
+                            score, cmd_str, is_valid = self.judge.evaluate(self.plan, "\n".join(code_lines), args[1], compare=self.judge_compare)
                             if is_valid:
                                 failed = False
                                 break
@@ -474,7 +478,7 @@ class MLESolver:
                 reflect_prompt = f"This is your code: {code_str}\n\nYour code returned the following error {code_return}. Please provide a detailed reflection on why this error was returned, which lines in the code caused this error, and exactly (line by line) how you hope to fix this in the next update. This step is mostly meant to reflect in order to help your future self fix the error better. Do not provide entirely new code but provide suggestions on how to fix the bug using LINE EDITS."
             elif os.path.exists("submission.csv"):
                 self.prev_working_code = copy(self.code_lines)
-                grade_return = get_score(self.plan, "\n".join(self.prev_working_code), code_return, openai_api_key=self.openai_api_key)[0]
+                grade_return = self.judge.evaluate(self.plan, "\n".join(self.prev_working_code), code_return, compare=self.judge_compare)[0]
                 if not self.supress_print: print(f"@@@@ SUBMISSION: model score {grade_return}", REWARD_MODEL_LLM=self.llm_str)
                 f"Your code was properly submitted and you have just received a grade for your model.\nYour score was {grade_return}.\n\n"
                 reflect_prompt = f"This is your code: {code_str}\n\nYour code successfully returned a submission csv. Consider further improving your technique through advanced learning techniques, data augmentation, or hyperparamter tuning to increase the score. Please provide a detailed reflection on how to improve your performance, which lines in the code could be improved upon, and exactly (line by line) how you hope to improve this in the next update. This step is mostly meant to reflect in order to help your future self."
