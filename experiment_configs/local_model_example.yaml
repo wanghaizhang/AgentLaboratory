@@ -1,10 +1,12 @@
 # 任意模型名版（不再限定 inference.py 里那 9 个字面量）
 # 用 OpenAI 兼容端点：本地 vLLM / Ollama / LM Studio / 自建网关都可用。
 # 跑前设置环境变量（PowerShell）:
-#   $env:LOCAL_BASE_URL = "http://127.0.0.1:11434/v1"     # 或 vLLM 的 http://127.0.0.1:8000/v1
-#   $env:LOCAL_MODEL    = "qwen3:8b"                      # 你服务的真实模型名
-#   $env:LOCAL_API_KEY  = "not-needed"                    # 本地服务通常不需要 key
+#   $env:LOCAL_BASE_URL = "http://127.0.0.1:8081/v1"        # 已实测可达
+#   $env:LOCAL_MODEL    = "qwen3.8-flash-next-iq2_xs"       # 端点 /v1/models 返回的就是这个名字
+#   $env:LOCAL_API_KEY  = "sk-strata-..."                   # 必须带 sk-strata- 前缀，裸 hash 会 401
+# key 只走环境变量，不写进仓库文件。
 # Note: copilot_mode / load-previous and copilot-mode / load-existing are both accepted (parse_yaml fixed).
+# 该端点的 content 常为 null、只有 reasoning_content —— inference.py/_text() 的回退分支是必需的。
 
 copilot_mode: False
 

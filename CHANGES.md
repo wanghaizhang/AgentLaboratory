@@ -40,6 +40,14 @@
 - 同一写法还有第二个隐患：objective 有效时若 `mode == "human"`，人类打分会覆盖客观分（优先级被破坏）。`if/elif` 单链修掉了它，新增用例 10 覆盖（objective 有效 + mode=human → 仍取 0.8，record 只有 objective）。
 - 用例 6 语义明确化：check 抛异常时 `score` 必须是 `None` 而非 `0.0`（对应旧的格式门禁失败），且不做兜底；record 只含 objective。
 
+## 2026-11-07 · 端点实测与零依赖冒烟脚本
+
+- 端点 `http://127.0.0.1:8081/v1`（OpenAI 兼容）实测可达：`/v1/models` 返回 `qwen3.8-flash-next-iq2_xs`；chat 正常返回但 **`content` 为 null、正文在 `reasoning_content`** ⇒ `inference.py/_text()` 的空 content 回退是必需的（实测确认）。key 必须保留 `sk-strata-` 前缀，裸 hash 报 401。
+- `experiment_configs/local_model_example.yaml` 头部注释改为该端点与该模型名（key 只走环境变量，不写进仓库文件）。
+- 新增 `demo_local.py`：只用标准库（urllib + judge.py），打印端点连通性、content/reasoning_content 回退、objective 与 LLM 自评的差值、human 不可用时的兜底。
+- 环境事实：本机 Python 3.11.7、pip 23.2.1，但**依赖一个都没装**（openai/tiktoken/yaml/torch 等全部 ModuleNotFoundError），且 PyPI 从当前环境不可达（"基础连接已经关闭"）⇒ 主流程（`ai_lab_repo.py`）目前无法运行，只有纯标准库的自检与 `demo_local.py` 可跑。
+- 验证：`py -3 demo_local.py` 实跑输出 objective/llm 双列与差值；`py -3 -c "import agents"` 在 `utils.py:4` 报 `No module named 'tiktoken'`，`import ai_lab_repo` 在 `ai_lab_repo.py:1` 报 `No module named 'PyPDF2'`。
+
 ## 未做（登记为待办）
 
 
