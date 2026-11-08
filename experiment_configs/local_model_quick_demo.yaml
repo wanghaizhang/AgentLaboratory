@@ -1,0 +1,56 @@
+# 限时演示配置（跑通整条流水线、几分钟内出产物用的，不是真跑 MATH-500 全量）
+# 与 local_model_example.yaml 的差别只有规模：2 篇文献、2 步实验、10 题子集。
+# 跑法（必须在仓库目录内，checks 与 RESEARCH_DIR_PATH 都是相对路径）:
+#   $env:LOCAL_BASE_URL = "http://127.0.0.1:8081/v1"
+#   $env:LOCAL_MODEL    = "qwen3.8-flash-next-iq2_xs"
+#   $env:LOCAL_API_KEY  = "sk-strata-..."
+#   .venv\Scripts\python.exe ai_lab_repo.py --yaml-location experiment_configs\local_model_quick_demo.yaml
+# api-key 留空：空串在 _openai_client() 里是 falsy，才会继续找 LOCAL_API_KEY。
+
+copilot_mode: False
+
+research-topic: "Quick demo: measure chain-of-thought accuracy on a small fixed subset (10 questions) of MATH-500 and write a short report."
+
+api-key: ""
+
+llm-backend: "local"
+lit-review-backend: "local"
+
+language: "English"
+
+num-papers-lit-review: 2
+num-papers-to-write: 1
+parallel-labs: False
+
+mlesolver-max-steps: 2
+papersolver-max-steps: 1
+lab-index: 1
+load-existing: False
+except-if-fail: True
+compile-latex: False
+
+# Judge layer: objective check first, LLM self-score recorded alongside for the diff.
+judge: "objective"
+checks: "checks_example.py"
+judge-compare: True
+judge-checklist:
+  - "did the experiment evaluate the subset it promised in the plan"
+  - "does the output contain the metric value the plan promised"
+
+task-notes:
+  plan-formulation:
+    - 'Come up with a plan for ONE small experiment only (10 questions). Submit the plan immediately.'
+  data-preparation:
+    - 'Use exactly 10 questions from the MATH-500 test split, the first 10 in dataset order. Do not evaluate on more than 10.'
+    - 'Sample code:\nfrom datasets import load_dataset\nsubset = load_dataset("HuggingFaceH4/MATH-500")["test"].select(range(10))'
+  running-experiments:
+    - "For all strings you instantiate you must use triple quotes (''')."
+    - 'Call the local model through utils: response = query_local(prompt=prompt, system=system_prompt, temperature=0.7). Do NOT call query_gpt4omini.'
+    - "Use is_equiv() to decide whether two answers are equivalent."
+    - "Print the accuracy as a plain number, e.g. print('accuracy:', correct/10)."
+    - "Keep it fast: one sequential loop over the 10 questions, no parallelism, no file downloads."
+  results-interpretation:
+    - 'Report the accuracy on the 10 questions and state that this is a subset, not the full test set.'
+  report-writing:
+    - 'The report must contain the sections abstract, introduction, methods, results, discussion (the objective check looks for these words).'
+    - 'Keep figures simple; matplotlib is available with the Agg backend.'

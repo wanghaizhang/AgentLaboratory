@@ -667,7 +667,9 @@ def parse_arguments():
 
 
 def parse_yaml(yaml_file_loc):
-    with open(yaml_file_loc, 'r') as file: agentlab_data = yaml.safe_load(file)
+    # 显式 utf-8：Windows 默认编码是 GBK，含中文注释的 yaml 用裸 open() 会 UnicodeDecodeError
+    # （实跑报错于 yaml/reader.py:178，'gbk' codec can't decode byte 0x9a）。
+    with open(yaml_file_loc, 'r', encoding='utf-8') as file: agentlab_data = yaml.safe_load(file)
     class YamlDataHolder:
         def __init__(self): pass
     parser = YamlDataHolder()
@@ -760,7 +762,15 @@ if __name__ == "__main__":
     if api_key is not None and os.getenv('OPENAI_API_KEY') is None: os.environ["OPENAI_API_KEY"] = args.api_key
     if deepseek_api_key is not None and os.getenv('DEEPSEEK_API_KEY') is None: os.environ["DEEPSEEK_API_KEY"] = args.deepseek_api_key
 
-    if not api_key and not deepseek_api_key: raise ValueError("API key must be provided via --api-key / -deepseek-api-key or the OPENAI_API_KEY / DEEPSEEK_API_KEY environment variable.")
+    # 本地 OpenAI 兼容端点不需要真 key：配了 LOCAL_BASE_URL / OPENAI_BASE_URL / LOCAL_MODEL 时，
+    # key 取 LOCAL_API_KEY；都没有才报错（与 inference.query_model 里同一条规则保持一致）。
+    if not api_key and not deepseek_api_key:
+        local_key = os.getenv("LOCAL_API_KEY")
+        if local_key or (os.getenv("LOCAL_BASE_URL") or os.getenv("OPENAI_BASE_URL") or os.getenv("LOCAL_MODEL")):
+            api_key = local_key or "not-needed"
+            print(f"[local endpoint] using key from LOCAL_API_KEY (or placeholder), base_url={os.getenv('LOCAL_BASE_URL') or os.getenv('OPENAI_BASE_URL')}")
+        else:
+            raise ValueError("API key must be provided via --api-key / -deepseek-api-key or the OPENAI_API_KEY / DEEPSEEK_API_KEY environment variable.")
 
     if human_mode or args.research_topic is None: research_topic = input("Please name an experiment idea for AgentLaboratory to perform: ")
     else: research_topic = args.research_topic

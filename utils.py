@@ -160,7 +160,7 @@ def compile_latex(latex_code, output_path, compile=True, timeout=30):
     dir_path = f"{output_path}/tex"
     tex_file_path = os.path.join(dir_path, "temp.tex")
     # Write the LaTeX code to the .tex file in the specified directory
-    with open(tex_file_path, "w") as f:
+    with open(tex_file_path, "w", encoding="utf-8") as f:
         f.write(latex_code)
 
     if not compile:
@@ -215,7 +215,8 @@ def save_to_file(location, filename, data):
     """Utility function to save data as plain text."""
     filepath = os.path.join(location, filename)
     try:
-        with open(filepath, 'w') as f:
+        # utf-8 显式：Windows 默认 GBK，模型输出里的非 GBK 字符会在写报告时 UnicodeEncodeError
+        with open(filepath, 'w', encoding='utf-8') as f:
             f.write(data)  # Write the raw string instead of using json.dump
         print(f"Data successfully saved to {filepath}")
     except Exception as e:

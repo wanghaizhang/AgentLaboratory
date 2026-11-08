@@ -12,7 +12,9 @@ copilot_mode: False
 
 research-topic: "Your goal is to design reasoning and prompt engineering techniques to maximize accuracy on the entire 500 test questions of MATH500 benchmark."
 
-api-key: "not-needed"
+# api-key 留空：空串在 inference.py `_openai_client()` 里是 falsy，会继续找 LOCAL_API_KEY / OPENAI_API_KEY。
+# 若写成 "not-needed" 这类占位串，占位串会盖掉环境变量里的真 key 并导致 401。
+api-key: ""
 
 # llm-backend 现在可以是任意模型名，走通用分支（base_url 由 LOCAL_BASE_URL 决定）
 llm-backend: "local"

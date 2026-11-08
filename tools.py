@@ -261,9 +261,19 @@ class ArxivSearch:
 
     def retrieve_full_paper_text(self, query, MAX_LEN=50000):
         pdf_text = str()
-        paper = next(arxiv.Client().results(arxiv.Search(id_list=[query])))
+        # 限流/网络失败时返回可读的失败说明而不是抛异常：调用方把返回值当 full_text 用，
+        # 文献评审因此不会因一次 429 中断（实测 arxiv 429 会直接终止整轮 run）。
+        try:
+            paper = next(arxiv.Client().results(arxiv.Search(id_list=[query])))
+        except Exception as e:
+            print(f"[arxiv] retrieve_full_paper_text failed for {query}: {e}")
+            return f"[ARXIV UNAVAILABLE: {e}. Use the abstract from the earlier search response instead of full text.]"
         # Download the PDF to the PWD with a custom filename.
-        paper.download_pdf(filename="downloaded-paper.pdf")
+        try:
+            paper.download_pdf(filename="downloaded-paper.pdf")
+        except Exception as e:
+            print(f"[arxiv] pdf download failed for {query}: {e}")
+            return f"[ARXIV PDF DOWNLOAD FAILED: {e}. Use the abstract instead.]"
         # creating a pdf reader object
         reader = PdfReader('downloaded-paper.pdf')
         # Iterate over all the pages

@@ -48,6 +48,25 @@
 - 环境事实：本机 Python 3.11.7、pip 23.2.1，但**依赖一个都没装**（openai/tiktoken/yaml/torch 等全部 ModuleNotFoundError），且 PyPI 从当前环境不可达（"基础连接已经关闭"）⇒ 主流程（`ai_lab_repo.py`）目前无法运行，只有纯标准库的自检与 `demo_local.py` 可跑。
 - 验证：`py -3 demo_local.py` 实跑输出 objective/llm 双列与差值；`py -3 -c "import agents"` 在 `utils.py:4` 报 `No module named 'tiktoken'`，`import ai_lab_repo` 在 `ai_lab_repo.py:1` 报 `No module named 'PyPDF2'`。
 
+## 2026-11-08 · 实跑跑通与 Windows 编码修复（feat/judge-injection）
+
+| 文件 | 改动 | 原因 | 验证 |
+|---|---|---|---|
+| `ai_lab_repo.py` `parse_yaml` | 裸 `open()` → `encoding='utf-8'` | Windows 默认 GBK：含中文注释的 yaml 报 `UnicodeDecodeError: 'gbk' codec can't decode byte 0x9a`（实跑复现于 `yaml/reader.py:178`） | 实跑第一次因此失败，修后通过 |
+| `ai_lab_repo.py` main | key 检查：配了 `LOCAL_BASE_URL` / `OPENAI_BASE_URL` / `LOCAL_MODEL` 时允许 key 为空并取 `LOCAL_API_KEY` | 原代码强制非空 key（`ValueError: API key must be provided…`），本地端点不需要真 key；与 `query_model` 里已有的同一条规则一致 | 实跑第二次因此失败，修后跑通 |
+| `utils.py` | `save_to_file`、`compile_latex` 写文件加 `encoding='utf-8'` | Windows GBK 下写模型输出（含非 GBK 字符）会 `UnicodeEncodeError` | `py_compile` 通过；同一实跑路径 |
+| `common_imports.py` | 非标准库导入全部改为可选（`_opt()` + try/except，缺失记入 `MISSING` 并绑定 `None`），仅 stdlib 与 `yaml` 强制 | 模块级 import torch/tensorflow/spacy/diffusers/plotly 使最小环境无法 import；agent 循环不需要 ML/可视化栈 | venv 内逐模块导入自检：`common_imports / judge / utils / tools / inference / agents / app / mlesolver / papersolver / ai_lab_repo` 全 OK |
+| `app.py` | `sentence_transformers` 导入与 `SentenceTransformer('all-MiniLM-L6-v2')` 实例化改 guarded（`model=None` 时语义检索不可用） | `ai_lab_repo.py` 会 `from app import *`，最小安装必须能 import app；原写法在该包缺失时直接崩 | 同上自检 |
+| `experiment_configs/local_model_example.yaml` | `api-key` 由 `"not-needed"` 改为 `""` | 空串在 `_openai_client()` 里是 falsy 才会继续找 `LOCAL_API_KEY`；占位串会盖掉环境变量真 key 导致 401 | 实跑确认 |
+
+环境事实与安装：
+
+- venv：`D:\demo\AgentLaboratory\.venv`（Python 3.11.7）。官方 PyPI 停滞 15 分钟无进展；改用 `http://mirrors.aliyun.com/pypi/simple/`（`--trusted-host mirrors.aliyun.com`）后正常。
+- 已装最小可跑集：openai 3.46.0、tiktoken 0.14.0、anthropic 2.6.0、google-generativeai 0.8.6、huggingface_hub 2.4.0、PyYAML 6.0.3、pypdf 7.0.0、PyPDF2 3.0.1、datasets 5.1.0、numpy 2.4.6、pandas 3.1.1、matplotlib 3.11.2、scikit-learn 1.9.1、scipy 1.17.1、flask 3.1.3、flask_sqlalchemy 3.1.1、semanticscholar 0.12.0、psutil、requests、aiohttp、tqdm、pydantic。
+- 版本漂移（实跑报错原文）：镜像装来的是 `arxiv 4.0.2`，`tools.py:266` 调用 `Result.download_pdf` → `AttributeError: 'Result' object has no attribute 'download_pdf'`；按 `requirements.txt` 钉的 `arxiv==2.1.3` 重装后该路径恢复。
+- 跑法必须在仓库目录内（`checks` 与 `RESEARCH_DIR_PATH` 都是相对路径）：在 `D:\demo` 跑时 `checks_example.py` 找不到、research dir 建在 `D:\demo` 根。
+- 自检（venv 内）：`test_judge.py` / `test_yaml_keys.py` / `test_local_dispatch.py` 全 PASS；真实调用经 `inference.query_model('local', …)` 返回 `'PONG'`，`content=null → reasoning_content` 回退仍生效。
+
 ## 未做（登记为待办）
 
 

@@ -14,3 +14,8 @@ state_saves/*
 __pycache__/*
 Figure*.png
 testrun.py
+.venv/
+data-gym-cache/
+downloaded-paper.pdf
+agent_times_*.txt
+MATH_research_dir/

@@ -5,7 +5,10 @@ from werkzeug.utils import secure_filename
 import os
 from PyPDF2 import PdfReader
 from flask_sqlalchemy import SQLAlchemy
-from sentence_transformers import SentenceTransformer
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    SentenceTransformer = None
 from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
@@ -58,8 +61,14 @@ def update_papers_from_uploads():
     return
     #raise Exception("FAILED TO UPDATE")
 
-# Load a pre-trained sentence transformer model
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Load a pre-trained sentence transformer model. Guarded: ai_lab_repo.py does
+# `from app import *`, so a minimal install must still be able to import this module.
+model = None
+if SentenceTransformer is not None:
+    try:
+        model = SentenceTransformer('all-MiniLM-L6-v2')
+    except Exception as _e:
+        print(f"[app] sentence transformer unavailable: {_e}")
 
 @app.route('/update', methods=['GET'])
 def update_on_demand():
