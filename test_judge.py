@@ -87,9 +87,24 @@ def main():
     assert ok and abs(score - 0.8) < 1e-9, f"objective must win over human, got {score}"
     assert [i["mode"] for i in j.record] == ["objective"], f"record should be objective only, got {[i['mode'] for i in j.record]}"
 
+    # 11. a checks callable loaded from a file must survive pickling (the state_saves path
+    #     in ai_lab_repo.save_state): Judge keeps the path and reloads the check on unpickle.
+    import pickle, tempfile, os
+    with tempfile.NamedTemporaryFile("w", suffix=".py", delete=False, encoding="utf-8") as f:
+        f.write("def check(artifact, run_return):\n    return True, 0.6\n")
+        checks_file = f.name
+    loaded = judge.load_checks(checks_file)
+    j = judge.Judge(mode="objective", checks=loaded, checks_path=checks_file)
+    restored = pickle.loads(pickle.dumps(j))
+    assert restored.checks is not None, "checks must be reloaded after unpickle"
+    score, msg, ok = restored.evaluate("plan", "artifact", "return")
+    assert ok and abs(score - 0.6) < 1e-9, f"restored judge should score 0.6, got {score}"
+    os.remove(checks_file)
+
     print("PASS: judge priority objective>human>llm, fail -> 0, unavailable -> fallback, compare records gap")
     print(f"  objective pass -> 0.8 | objective fail -> 0.0 | human y/n/0.7 -> 1.0/0.0/0.7")
     print(f"  compare gap sample: {rows[0][3]:+.3f}")
+    print(f"  pickle round-trip: checks reloaded from path, restored score 0.6")
     return 0
 
 

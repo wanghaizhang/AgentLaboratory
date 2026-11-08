@@ -38,15 +38,31 @@ def load_checks(path):
 
 class Judge:
     def __init__(self, mode="objective", checks=None, llm_scorer=None, checklist=None,
-                 input_fn=None, record=None):
+                 input_fn=None, record=None, checks_path=None):
         if mode not in MODES:
             mode = "llm"
         self.mode = mode
         self.checks = checks
+        self.checks_path = checks_path
         self.llm_scorer = llm_scorer
         self.checklist = checklist if checklist is not None else []
         self.input_fn = input_fn if input_fn is not None else input
         self.record = record if record is not None else []
+
+    def __getstate__(self):
+        """A checks callable loaded by importlib cannot be pickled (its module name
+        `user_checks` is not importable). Save the path instead; the check is reloaded
+        on unpickle. Real error seen in a live run: `pickle.dump(self, f)` ->
+        `_pickle.PicklingError: Can't pickle <function check ...>: import of module
+        'user_checks' failed`, raised from ai_lab_repo.save_state."""
+        state = dict(self.__dict__)
+        state["checks"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self.checks is None and self.checks_path:
+            self.checks = load_checks(self.checks_path)
 
     def bind_llm(self, scorer):
         """Bind the LLM self-scoring implementation; never overwrite an existing binding

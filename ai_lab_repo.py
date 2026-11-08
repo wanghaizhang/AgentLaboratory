@@ -792,7 +792,7 @@ if __name__ == "__main__":
     checks_fn = load_checks(args.checks)
     if judge_mode == "objective" and checks_fn is None:
         print("[judge] objective 模式但没有可执行的 checks 文件，实际会回退到 LLM 自评")
-    judge_instance = Judge(mode=judge_mode, checks=checks_fn, checklist=args.judge_checklist, record=[])
+    judge_instance = Judge(mode=judge_mode, checks=checks_fn, checklist=args.judge_checklist, record=[], checks_path=args.checks)
 
     human_in_loop = {
         "literature review":      human_mode,
