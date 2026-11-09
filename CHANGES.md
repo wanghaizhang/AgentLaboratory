@@ -77,9 +77,18 @@
 | `experiment_configs/local_model_quick_demo.yaml` | 1 篇文献 / 2 步实验 / 1 篇报告；data-preparation notes 改为"不要用 datasets/HF 下载，把 10 道题直接写进代码" | 本机 HF 不可达（`hf-mirror.com` 证书过期）；压小规模以便快速看到端到端产物 | 实跑产出 `load_data.py`，模型按约定内嵌 10 题（证据：`D:\demo\run-1108-partial\research_dir_0_lab_1\src\load_data.py`） |
 | `.gitignore` | 补 `.venv/`、`data-gym-cache/`、`downloaded-paper.pdf`、`agent_times_*.txt`、`MATH_research_dir/` | 原 `venv*` 不匹配 `.venv`；运行产物会被 git 当未跟踪文件 | `git status` 干净 |
 
+## 2026-11-09 · 离线守卫测试（不依赖外部服务响应）
+
+- 新增 `test_guards.py`（不联网，用假对象模拟故障），三条守卫全 PASS：
+  1. `HFDataSearch`：Hub 不可达 → 空索引、不抛异常；`retrieve_ds` 对空索引返回 `[]`。
+  2. `ArxivSearch.retrieve_full_paper_text`：HTTP 429 → 返回可读失败字符串，而不是抛异常中断整轮。
+  3. `query_model`：模拟前两次 503、第三次成功 → 在窗口内恢复（去抖动后退避序列 `[0.01, 0.02]`）；窗口耗尽后最终异常写明 `Max retries (3)` 与最后一次错误，且退避封顶 `LOCAL_BACKOFF_CAP` 生效。
+- `requirements.txt` 补 `flask`、`flask_sqlalchemy`、`sentence-transformers`（此前缺失，`from app import *` 会失败）。
+- 实跑边界（属外部服务与模型输出质量，不是仓库代码缺陷）：端点会 `503 this instance is draining` / `Request timed out`；模型把散文写进代码块导致 `SyntaxError: unterminated string literal (detected at line 29)`。端到端已跑通到 data preparation（产出 `src/load_data.py` 且执行成功），后续阶段受端点抖动影响。
+
 ## 未做（登记为待办）
 
 
-- `requirements.txt` 未补 `flask`、`flask_sqlalchemy`、`sentence-transformers`（`ai_lab_repo.py` 会 `from app import *`）。
-- 真正的端点连通性未验证（需先确认出站 TLS 与依赖安装）。
+- ~~`requirements.txt` 未补 `flask`、`flask_sqlalchemy`、`sentence-transformers`~~ 已补（2026-11-09）。
+- ~~真正的端点连通性未验证~~ 已验证（2026-11-07 起端点可达，2026-11-08 起主流程可跑；剩余问题是端点会 503/超时，属运行环境）。
 - 奖励层可注入化（objective/human/llm judge）在 `feat/judge-injection` 分支进行。

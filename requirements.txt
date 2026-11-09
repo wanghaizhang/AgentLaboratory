@@ -133,3 +133,8 @@ yarl==1.18.0
 zipp==3.21.0
 google-generativeai
 PyPDF2
+# app.py 需要（ai_lab_repo.py 会 `from app import *`）；此前缺这三项，最小安装会 import 失败
+flask
+flask_sqlalchemy
+# sentence-transformers 现在是可选的（app.py 里 guarded import，缺失时语义检索不可用）
+sentence-transformers
