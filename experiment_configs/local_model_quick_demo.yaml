@@ -29,6 +29,11 @@ load-existing: False
 except-if-fail: True
 compile-latex: False
 
+# HF 检索现在是可开关的（不再是硬编码必需）。这份配置把数据内嵌，所以关掉 ⇒ 整条流水线只依赖 LLM 端点。
+# 想真用 HF 数据：allow-hf-search: True；或 hf-catalog: "my_catalog.json"（本地 JSON 目录，元素含 id/description/likes/downloads）⇒ 完全不访问 Hub。
+allow-hf-search: False
+hf-catalog: null
+
 # Judge layer: objective check first, LLM self-score recorded alongside for the diff.
 judge: "objective"
 checks: "checks_example.py"

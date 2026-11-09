@@ -3,8 +3,10 @@
 Run: .venv\Scripts\python.exe test_guards.py
 （也可用 py -3，只要 tools/inference 的依赖已装）
 """
+import json
 import os
 import random
+import tempfile
 import types
 
 import tools
@@ -96,8 +98,35 @@ def test_local_retry_backoff():
     print("PASS guard 3 (query_model): recovers inside the window; final error names LOCAL_TRIES and the last error")
 
 
+def test_local_catalog():
+    """HFDataSearch(catalog=...): 本地 JSON 目录，全程不访问 Hub。"""
+    path = os.path.join(tempfile.gettempdir(), "dsh_hf_catalog_test.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([
+            {"id": "myorg/tickets", "description": "customer support tickets for classification", "likes": 12, "downloads": 80},
+            {"id": "someone/noise", "description": "unrelated corpus", "likes": 1, "downloads": 2},
+        ], f)
+
+    orig_load = tools.load_dataset
+    orig_builder = tools.load_dataset_builder
+    tools.load_dataset = lambda *a, **k: (_ for _ in ()).throw(AssertionError("local catalog must not hit the Hub"))
+    tools.load_dataset_builder = lambda *a, **k: (_ for _ in ()).throw(ConnectionError("offline"))
+    try:
+        eng = tools.HFDataSearch(catalog=path)
+        assert len(eng.ds) == 1, f"only rows above the thresholds should survive, got {len(eng.ds)}"
+        top = eng.retrieve_ds("ticket classification", N=2)
+        assert len(top) == 1 and top[0]["id"] == "myorg/tickets", f"local catalog ranking should return the ticket row, got {top}"
+        assert eng.results_str(top), "results_str must still produce text for a local catalog"
+    finally:
+        tools.load_dataset = orig_load
+        tools.load_dataset_builder = orig_builder
+        os.remove(path)
+    print("PASS guard 4 (HFDataSearch catalog): local JSON catalog works with no Hub access")
+
+
 if __name__ == "__main__":
     test_hf_index_guard()
     test_arxiv_guard()
     test_local_retry_backoff()
+    test_local_catalog()
     print("ALL GUARD TESTS PASS (offline, no network)")

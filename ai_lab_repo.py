@@ -18,7 +18,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class LaboratoryWorkflow:
-    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, judge=None, judge_compare=False):
+    def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, judge=None, judge_compare=False, allow_hf_search=True, hf_catalog=None):
         """
         Initialize laboratory workflow
         @param research_topic: (str) description of research idea to explore
@@ -94,6 +94,8 @@ class LaboratoryWorkflow:
         self.verbose = True
         self.judge = judge if judge is not None else Judge(mode="llm")
         self.judge_compare = judge_compare
+        self.allow_hf_search = allow_hf_search
+        self.hf_catalog = hf_catalog
         self.reviewers = ReviewersAgent(model=self.model_backbone, notes=self.notes, openai_api_key=self.openai_api_key, judge=self.judge, judge_compare=self.judge_compare)
         self.phd = PhDStudentAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
         self.postdoc = PostdocAgent(model=self.model_backbone, notes=self.notes, max_steps=self.max_steps, openai_api_key=self.openai_api_key)
@@ -353,7 +355,7 @@ class LaboratoryWorkflow:
         ml_dialogue = str()
         swe_feedback = str()
         ml_command = str()
-        hf_engine = HFDataSearch()
+        hf_engine = HFDataSearch(catalog=self.hf_catalog) if self.allow_hf_search else None
         # iterate until max num tries to complete task is exhausted
         for _i in range(max_tries):
             print(f"@@ Lab #{self.lab_index} Paper #{self.paper_index} @@")
@@ -409,9 +411,14 @@ class LaboratoryWorkflow:
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
             if "```SEARCH_HF" in resp:
                 hf_query = extract_prompt(resp, "SEARCH_HF")
-                hf_res = "\n".join(hf_engine.results_str(hf_engine.retrieve_ds(hf_query)))
                 ml_command = f"HF search command produced by the ML agent:\n{hf_query}"
-                ml_feedback += f"Huggingface results: {hf_res}\n"
+                if hf_engine is None:
+                    ml_feedback += ("Huggingface search is disabled (allow-hf-search: False): use the data "
+                                    "described in the task notes — local files or data embedded in the code — "
+                                    "instead of the Hub, and do not issue SEARCH_HF.\n")
+                else:
+                    hf_res = "\n".join(hf_engine.results_str(hf_engine.retrieve_ds(hf_query)))
+                    ml_feedback += f"Huggingface results: {hf_res}\n"
         raise Exception("Max tries during phase: Data Preparation")
 
     def plan_formulation(self):
@@ -724,6 +731,12 @@ def parse_yaml(yaml_file_loc):
     if 'judge-compare' in agentlab_data: parser.judge_compare = agentlab_data["judge-compare"]
     else: parser.judge_compare = False
 
+    # HF 检索目录不再是必需项：关掉就用任务 notes 里的数据；或指一份本地 JSON 目录
+    if 'allow-hf-search' in agentlab_data: parser.allow_hf_search = agentlab_data["allow-hf-search"]
+    else: parser.allow_hf_search = True
+    if 'hf-catalog' in agentlab_data: parser.hf_catalog = agentlab_data["hf-catalog"]
+    else: parser.hf_catalog = None
+
     if 'lab-index' in agentlab_data: parser.lab_index = agentlab_data["lab-index"]
     else: parser.lab_index = 0
     return parser
@@ -742,6 +755,7 @@ if __name__ == "__main__":
     except_if_fail = args.except_if_fail.lower() == "true" if type(args.except_if_fail) == str else args.except_if_fail
     agentRxiv = args.agentRxiv.lower() == "true" if type(args.agentRxiv) == str else args.agentRxiv
     construct_agentRxiv = args.construct_agentRxiv.lower() == "true" if type(args.construct_agentRxiv) == str else args.construct_agentRxiv
+    allow_hf_search = args.allow_hf_search.lower() == "true" if type(args.allow_hf_search) == str else args.allow_hf_search
     lab_index = int(args.lab_index) if type(args.construct_agentRxiv) == str else args.lab_index
 
     try: num_papers_to_write = int(args.num_papers_to_write.lower()) if type(args.num_papers_to_write) == str else args.num_papers_to_write
@@ -893,7 +907,9 @@ if __name__ == "__main__":
                 lab_index=lab_index,
                 lab_dir=f"./{lab_direct}",
                 judge=judge_instance,
-                judge_compare=judge_compare
+                judge_compare=judge_compare,
+                allow_hf_search=allow_hf_search,
+                hf_catalog=args.hf_catalog
             )
             lab.perform_research()
             time_str += str(time.time() - time_now) + " | "

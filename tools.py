@@ -3,7 +3,7 @@ from utils import *
 import os
 import time
 import arxiv
-import io, sys
+import io, sys, json
 import traceback
 import matplotlib
 import numpy as np
@@ -19,23 +19,38 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 class HFDataSearch:
-    def __init__(self, like_thr=3, dwn_thr=50) -> None:
+    def __init__(self, like_thr=3, dwn_thr=50, catalog=None) -> None:
         """
         Class for finding relevant huggingface datasets
         :param like_thr:
         :param dwn_thr:
+        :param catalog: 本地数据集目录（JSON 数组，元素含 id/description/likes/downloads）。
+            给了 catalog 或设了 HF_CATALOG 就完全不访问 Hub；两者都没有才去下载检索目录。
         """
         self.dwn_thr = dwn_thr
         self.like_thr = like_thr
-        try:
-            self.ds = load_dataset("nkasmanoff/huggingface-datasets")["train"]
-        except Exception as e:
-            # Hub 不可达时置空而不是抛异常（实跑: ConnectionError "Couldn't reach
-            # 'nkasmanoff/huggingface-datasets' on the Hub (LocalEntryNotFoundError)",
-            # 底层 WinError 10060 超时）。retrieve_ds 已能处理空 ds，data preparation
-            # 阶段因此可以继续跑，而不是在模型开口之前整轮崩掉。
-            print(f"[hf] dataset index unavailable: {e}")
-            self.ds = []
+        catalog = catalog or os.getenv("HF_CATALOG")
+
+        if catalog:
+            try:
+                with open(catalog, encoding="utf-8") as f:
+                    rows = json.load(f)
+            except Exception as e:
+                print(f"[hf] local catalog {catalog} could not be loaded: {e}")
+                rows = []
+            self.ds = [dict(r) for r in rows if isinstance(r, dict)]
+        else:
+            try:
+                self.ds = load_dataset("nkasmanoff/huggingface-datasets")["train"]
+            except Exception as e:
+                # Hub 不可达时置空而不是抛异常（实跑: ConnectionError "Couldn't reach
+                # 'nkasmanoff/huggingface-datasets' on the Hub (LocalEntryNotFoundError)",
+                # 底层 WinError 10060 超时）。retrieve_ds 已能处理空 ds，data preparation
+                # 阶段因此可以继续跑，而不是在模型开口之前整轮崩掉。
+                print(f"[hf] dataset index unavailable: {e}")
+                self.ds = []
+
+        if not self.ds:
             self.descriptions = []
             self.likes_norm = []
             self.downloads_norm = []
@@ -51,14 +66,14 @@ class HFDataSearch:
 
         # Iterate over the dataset and filter based on criteria
         for idx, item in enumerate(self.ds):
-            # Get likes and downloads, handling None values
-            likes = int(item['likes']) if item['likes'] is not None else 0
-            downloads = int(item['downloads']) if item['downloads'] is not None else 0
+            # Get likes and downloads, handling None values (本地目录可能缺字段，用 .get)
+            likes = int(item.get('likes') or 0)
+            downloads = int(item.get('downloads') or 0)
 
             # Check if likes and downloads meet the thresholds
             if likes >= self.like_thr and downloads >= self.dwn_thr:
                 # Check if the description is a non-empty string
-                description = item['description']
+                description = item.get('description')
                 if isinstance(description, str) and description.strip():
                     # Collect the data
                     filtered_indices.append(idx)
@@ -76,8 +91,8 @@ class HFDataSearch:
             self.description_vectors = None
             return  # Exit the constructor
 
-        # Filter the datasets using the collected indices
-        self.ds = self.ds.select(filtered_indices)
+        # Filter the datasets using the collected indices（本地 catalog 是普通 list，没有 .select）
+        self.ds = [self.ds[i] for i in filtered_indices]
 
         # Update descriptions, likes, and downloads
         self.descriptions = filtered_descriptions
