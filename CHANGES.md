@@ -86,6 +86,15 @@
 - `requirements.txt` 补 `flask`、`flask_sqlalchemy`、`sentence-transformers`（此前缺失，`from app import *` 会失败）。
 - 实跑边界（属外部服务与模型输出质量，不是仓库代码缺陷）：端点会 `503 this instance is draining` / `Request timed out`；模型把散文写进代码块导致 `SyntaxError: unterminated string literal (detected at line 29)`。端到端已跑通到 data preparation（产出 `src/load_data.py` 且执行成功），后续阶段受端点抖动影响。
 
+## 2026-11-09 · HF 检索目录改为可开关（不再是硬编码必需）
+
+- `tools.HFDataSearch`：新增 `catalog` 参数与 `HF_CATALOG` 环境变量。给本地 JSON 目录（元素含 `id`/`description`/`likes`/`downloads`）时**完全不访问 Hub**；只有两者都没有才去下载检索目录。
+  - `self.ds = self.ds.select(filtered_indices)` 改为列表推导（本地目录是普通 `list`，没有 `.select`）；字段访问改 `.get`，阈值与打分逻辑不变。
+- `ai_lab_repo.py`：`allow-hf-search`（默认 True）与 `hf-catalog` 进 `parse_yaml`；data preparation 里 `hf_engine` 可为 `None`，`SEARCH_HF` 分支给出明确反馈（"用 notes 里描述的数据，别发 SEARCH_HF"）而不是崩溃。
+- `test_guards.py` 新增 guard 4：本地目录 + 打桩 `load_dataset`/`load_dataset_builder` ⇒ 断言不会碰 Hub，排名与 `results_str` 正常。
+- `local_model_quick_demo.yaml` 显式设 `allow-hf-search: False`（该配置数据内嵌），并写明两种用法。
+- 验证：`test_guards.py`（4 条）+ `test_judge.py` + `test_yaml_keys.py` + `test_local_dispatch.py` 全 PASS；`parse_yaml` 对 quick demo 读到 `False`、对 `local_model_example.yaml` 读到 `True`。commit `d6b5fbf`。
+
 ## 未做（登记为待办）
 
 
