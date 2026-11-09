@@ -27,7 +27,21 @@ class HFDataSearch:
         """
         self.dwn_thr = dwn_thr
         self.like_thr = like_thr
-        self.ds = load_dataset("nkasmanoff/huggingface-datasets")["train"]
+        try:
+            self.ds = load_dataset("nkasmanoff/huggingface-datasets")["train"]
+        except Exception as e:
+            # Hub 不可达时置空而不是抛异常（实跑: ConnectionError "Couldn't reach
+            # 'nkasmanoff/huggingface-datasets' on the Hub (LocalEntryNotFoundError)",
+            # 底层 WinError 10060 超时）。retrieve_ds 已能处理空 ds，data preparation
+            # 阶段因此可以继续跑，而不是在模型开口之前整轮崩掉。
+            print(f"[hf] dataset index unavailable: {e}")
+            self.ds = []
+            self.descriptions = []
+            self.likes_norm = []
+            self.downloads_norm = []
+            self.vectorizer = None
+            self.description_vectors = None
+            return
 
         # Initialize lists to collect filtered data
         filtered_indices = []

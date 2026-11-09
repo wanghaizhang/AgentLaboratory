@@ -67,6 +67,16 @@
 - 跑法必须在仓库目录内（`checks` 与 `RESEARCH_DIR_PATH` 都是相对路径）：在 `D:\demo` 跑时 `checks_example.py` 找不到、research dir 建在 `D:\demo` 根。
 - 自检（venv 内）：`test_judge.py` / `test_yaml_keys.py` / `test_local_dispatch.py` 全 PASS；真实调用经 `inference.query_model('local', …)` 返回 `'PONG'`，`content=null → reasoning_content` 回退仍生效。
 
+## 2026-11-09 · 端到端跑通过程中的三个健壮性修复（feat/judge-injection）
+
+| 文件 | 改动 | 原因 | 验证 |
+|---|---|---|---|
+| `inference.py` `query_model` | 本地/自定义端点的重试窗口由 5 次 × 5 s 改为 10 次 + 指数退避（基准 5 s、封顶 60 s、带抖动），可用 `LOCAL_TRIES` / `LOCAL_BACKOFF` / `LOCAL_BACKOFF_CAP` 调；最终异常带上最后一次错误 | 实跑报错原文：`Error code: 503 - this instance is draining; retry against the next instance` 后连续 `Connection error`，原窗口内端点没恢复，整轮 run 崩在 `Exception: Max retries: timeout`（`inference.py:248`） | `py_compile` 通过；退避序列实测 5.0 / 10.9 / 20.3 s；端点探活 3 次全 `PONG` |
+| `tools.py` `HFDataSearch.__init__` | `load_dataset("nkasmanoff/huggingface-datasets")` 加 try/except：不可达时置空索引并 return（`retrieve_ds` 已能处理空 ds） | 实跑报错原文：`ConnectionError: Couldn't reach 'nkasmanoff/huggingface-datasets' on the Hub (LocalEntryNotFoundError)`，底层 `WinError 10060`；该异常在 data preparation 阶段模型开口之前抛出，整轮直接崩 | 修后实跑进入 data preparation 并产出 `src/load_data.py`（执行成功） |
+| `judge.py` | `Judge` 记录 `checks_path`，`__getstate__` 丢弃函数、`__setstate__` 重新加载 | 实跑 `pickle.dump(self, f)` → `_pickle.PicklingError: Can't pickle <function check>: import of module 'user_checks' failed`（importlib 动态加载的函数不能按引用 pickle） | `test_judge.py` 新增用例 11（pickle round-trip 后 check 仍可用、score 0.6）PASS；实跑 `state_saves/Paper0.pkl` 正常写出 |
+| `experiment_configs/local_model_quick_demo.yaml` | 1 篇文献 / 2 步实验 / 1 篇报告；data-preparation notes 改为"不要用 datasets/HF 下载，把 10 道题直接写进代码" | 本机 HF 不可达（`hf-mirror.com` 证书过期）；压小规模以便快速看到端到端产物 | 实跑产出 `load_data.py`，模型按约定内嵌 10 题（证据：`D:\demo\run-1108-partial\research_dir_0_lab_1\src\load_data.py`） |
+| `.gitignore` | 补 `.venv/`、`data-gym-cache/`、`downloaded-paper.pdf`、`agent_times_*.txt`、`MATH_research_dir/` | 原 `venv*` 不匹配 `.venv`；运行产物会被 git 当未跟踪文件 | `git status` 干净 |
+
 ## 未做（登记为待办）
 
 

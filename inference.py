@@ -1,7 +1,7 @@
 import openai
 import time, tiktoken
 from openai import OpenAI
-import os, anthropic, json
+import os, anthropic, json, random
 import google.generativeai as genai
 
 TOKENS_IN = dict()
@@ -61,7 +61,16 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
         os.environ["ANTHROPIC_API_KEY"] = anthropic_api_key
     if gemini_api_key is not None:
         os.environ["GEMINI_API_KEY"] = gemini_api_key
-    for _ in range(tries):
+    # 本地/自定义网关端点会瞬时抖动（实跑报错原文: "Error code: 503 - this instance is draining;
+    # retry against the next instance"，随后连续 Connection error）。原来的 5 次 × 5s 窗口太短，
+    # 一次抖动就让整轮 run 崩在 "Max retries: timeout"。本地端点用更长的窗口 + 指数退避（带抖动），
+    # 环境变量可调：LOCAL_TRIES / LOCAL_BACKOFF / LOCAL_BACKOFF_CAP。
+    is_local_endpoint = bool(os.getenv("LOCAL_BASE_URL") or os.getenv("OPENAI_BASE_URL") or os.getenv("LOCAL_MODEL"))
+    max_tries = int(os.getenv("LOCAL_TRIES", "10")) if is_local_endpoint else tries
+    backoff_base = float(os.getenv("LOCAL_BACKOFF", "5.0")) if is_local_endpoint else timeout
+    backoff_cap = float(os.getenv("LOCAL_BACKOFF_CAP", "60.0"))
+    last_error = None
+    for _ in range(max_tries):
         try:
             if model_str == "gpt-4o-mini" or model_str == "gpt4omini" or model_str == "gpt-4omini" or model_str == "gpt4o-mini":
                 model_str = "gpt-4o-mini"
@@ -243,9 +252,13 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
             return answer
         except Exception as e:
             print("Inference Exception:", e)
-            time.sleep(timeout)
+            last_error = e
+            if is_local_endpoint:
+                time.sleep(min(backoff_cap, backoff_base * (2 ** _)) + random.uniform(0, 1))
+            else:
+                time.sleep(timeout)
             continue
-    raise Exception("Max retries: timeout")
+    raise Exception(f"Max retries ({max_tries}) exceeded, last error: {last_error}")
 
 
 #print(query_model(model_str="o1-mini", prompt="hi", system_prompt="hey"))

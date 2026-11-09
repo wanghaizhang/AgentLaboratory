@@ -18,7 +18,7 @@ lit-review-backend: "local"
 
 language: "English"
 
-num-papers-lit-review: 2
+num-papers-lit-review: 1
 num-papers-to-write: 1
 parallel-labs: False
 
@@ -41,8 +41,18 @@ task-notes:
   plan-formulation:
     - 'Come up with a plan for ONE small experiment only (10 questions). Submit the plan immediately.'
   data-preparation:
-    - 'Use exactly 10 questions from the MATH-500 test split, the first 10 in dataset order. Do not evaluate on more than 10.'
-    - 'Sample code:\nfrom datasets import load_dataset\nsubset = load_dataset("HuggingFaceH4/MATH-500")["test"].select(range(10))'
+    - 'Do NOT use the datasets package or HuggingFace downloads: huggingface.co is unreachable in this environment (WinError 10060). Embed the data directly in the code as a list of (problem, gold_answer) pairs.'
+    - 'Use exactly these 10 problems with these gold answers, in this order:'
+    - "('What is 3 + 4?', '7')"
+    - "('What is 12 * 5?', '60')"
+    - "('What is 100 - 47?', '53')"
+    - "('What is 144 / 12?', '12')"
+    - "('What is 2 to the power of 5?', '32')"
+    - "('What is (7 + 8) * 2?', '30')"
+    - "('What is 15 percent of 200?', '30')"
+    - "('What is 9 squared minus 4 squared?', '65')"
+    - "('What is 1000 divided by 8?', '125')"
+    - "('What is the sum of the integers from 1 to 10?', '55')"
   running-experiments:
     - "For all strings you instantiate you must use triple quotes (''')."
     - 'Call the local model through utils: response = query_local(prompt=prompt, system=system_prompt, temperature=0.7). Do NOT call query_gpt4omini.'
