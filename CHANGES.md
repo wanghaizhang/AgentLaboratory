@@ -110,6 +110,7 @@
 
 - `README.md`「🧭 科研之外的应用场景」一节补 10 个具体例子，每个按 **输入 → 断言 → 产出 → 失败长什么样** 写（工单分类、网络层网关、ETL、参数扫描、巡检合规、文档抽取、补测试、API 客户端、配置校验器、作业批改），并新增「跑法（非科研任务）」小节：命令行只有 `--yaml-location`，裁判相关键是 `judge` / `checks` / `judge-checklist` / `judge-compare`；写明 objective 模式但 checks 加载失败时不会退出、会回退 LLM 自评（`ai_lab_repo.py:819-820`）。
 - 新增 `examples/checks_classification.py`：同一文件既是 yaml `checks:` 指向的文件（`check(artifact, run_return) -> (bool, float)`），也是离线演示（固定种子造 200 行 gold，跑两个对照 case）。纯标准库，不联网、不 pip。
+- `readme/README-chinese.md`「这东西只能做学术研究吗」节末补一行指向 README 的场景例子与可跑的 checks 示例。
 - 原因：此前只有场景表，没有"具体任务长什么样"，读者无法判断值不值得用它。
 - 验证：`py -3 examples/checks_classification.py` 实跑输出 —— A（198 行，声称 0.91）`pass=False score=0.000`；B（200 行，声称 0.82）`pass=True score=0.820`，两次 LLM 自评均为 0.930（diff `-0.930` / `-0.110`）。另验证 `judge.load_checks("examples/checks_classification.py")` 返回可调用对象、`check()` 正常执行。
 
