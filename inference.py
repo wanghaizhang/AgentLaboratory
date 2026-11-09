@@ -223,10 +223,23 @@ def query_model(model_str, prompt, system_prompt, openai_api_key=None, gemini_ap
                         {"role": "user", "content": prompt}]
                 else:
                     messages = [{"role": "user", "content": prompt}]
+                # 可选关闭思考（只作用于本通用分支，即本地/OpenAI 兼容端点；硬编码模型分支不受影响）。
+                # LOCAL_REASONING_EFFORT=none|minimal|low  -> reasoning_effort
+                # LOCAL_ENABLE_THINKING=0|false|no|off     -> chat_template_kwargs.enable_thinking（vLLM/Qwen 模板开关）
+                # 实测（2026-11-09）：关掉后单步从 ~6 s 降到 1–3.5 s，且 content 不再为空——
+                # 开思考时 token 预算可能全被 reasoning 吃掉，answer 就变成 reasoning 的转述，门禁与报告都会受影响。
+                # 两个键都不设时行为与上游一致。
+                extra_kwargs = {}
+                if is_local_endpoint:
+                    effort = os.getenv("LOCAL_REASONING_EFFORT")
+                    if effort:
+                        extra_kwargs["reasoning_effort"] = effort
+                    if os.getenv("LOCAL_ENABLE_THINKING", "").strip().lower() in ("0", "false", "no", "off"):
+                        extra_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
                 if temp is None:
-                    completion = client.chat.completions.create(model=model_name, messages=messages)
+                    completion = client.chat.completions.create(model=model_name, messages=messages, **extra_kwargs)
                 else:
-                    completion = client.chat.completions.create(model=model_name, messages=messages, temperature=temp)
+                    completion = client.chat.completions.create(model=model_name, messages=messages, temperature=temp, **extra_kwargs)
                 answer = _extract_content(completion.choices[0].message)
 
             try:

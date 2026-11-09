@@ -140,10 +140,58 @@ def test_exec_timeout_override():
     print("PASS guard 5 (exec_timeout): EXECUTE_TIMEOUT overrides per-phase defaults; invalid/0 falls back")
 
 
+def test_reasoning_switch():
+    """query_model 通用分支: 默认不注入任何额外参数；设了环境变量才关思考。"""
+    os.environ["LOCAL_BASE_URL"] = "http://127.0.0.1:8081/v1"
+    captured = []
+
+    def create(**kw):
+        captured.append(kw)
+        return types.SimpleNamespace(
+            choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="PONG", reasoning_content=None))])
+
+    fake = types.SimpleNamespace(chat=types.SimpleNamespace(completions=types.SimpleNamespace(create=create)))
+    orig_client = inference._openai_client
+    inference._openai_client = lambda key=None: fake
+    saved = {k: os.environ.get(k) for k in ("LOCAL_REASONING_EFFORT", "LOCAL_ENABLE_THINKING")}
+    try:
+        # 1) 默认：行为与上游一致，不能注入参数
+        os.environ.pop("LOCAL_REASONING_EFFORT", None)
+        os.environ.pop("LOCAL_ENABLE_THINKING", None)
+        captured.clear()
+        assert inference.query_model("local", "hi", "", print_cost=False) == "PONG"
+        assert "reasoning_effort" not in captured[0] and "extra_body" not in captured[0], \
+            f"defaults must not inject params, got {captured[0]}"
+
+        # 2) reasoning_effort 直通（实测最快：单步 1.1–3.5 s）
+        os.environ["LOCAL_REASONING_EFFORT"] = "none"
+        captured.clear()
+        inference.query_model("local", "hi", "", print_cost=False)
+        assert captured[0].get("reasoning_effort") == "none", \
+            f"reasoning_effort must be passed through, got {captured[0]}"
+
+        # 3) 模板开关走 extra_body（SDK 里 chat_template_kwargs 不是 create 的正式参数）
+        os.environ.pop("LOCAL_REASONING_EFFORT", None)
+        os.environ["LOCAL_ENABLE_THINKING"] = "0"
+        captured.clear()
+        inference.query_model("local", "hi", "", print_cost=False)
+        assert captured[0].get("extra_body") == {"chat_template_kwargs": {"enable_thinking": False}}, \
+            f"template switch must be sent via extra_body, got {captured[0]}"
+    finally:
+        inference._openai_client = orig_client
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    print("PASS guard 6 (reasoning switch): no extra params by default; LOCAL_REASONING_EFFORT / LOCAL_ENABLE_THINKING inject them")
+
+
 if __name__ == "__main__":
     test_hf_index_guard()
     test_arxiv_guard()
     test_local_retry_backoff()
     test_local_catalog()
     test_exec_timeout_override()
+    test_reasoning_switch()
     print("ALL GUARD TESTS PASS (offline, no network)")

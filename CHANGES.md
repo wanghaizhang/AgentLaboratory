@@ -114,6 +114,20 @@
 - 原因：此前只有场景表，没有"具体任务长什么样"，读者无法判断值不值得用它。
 - 验证：`py -3 examples/checks_classification.py` 实跑输出 —— A（198 行，声称 0.91）`pass=False score=0.000`；B（200 行，声称 0.82）`pass=True score=0.820`，两次 LLM 自评均为 0.930（diff `-0.930` / `-0.110`）。另验证 `judge.load_checks("examples/checks_classification.py")` 返回可调用对象、`check()` 正常执行。
 
+## 2026-11-09 · 思考开关（可选关闭 reasoning，实测提速）
+
+| 文件 | 改动 | 原因 | 验证 |
+|---|---|---|---|
+| `inference.py` `query_model` 通用分支 | 新增 `extra_kwargs`：`LOCAL_REASONING_EFFORT` 直通 `reasoning_effort`；`LOCAL_ENABLE_THINKING=0|false|no|off` 经 `extra_body` 传 `chat_template_kwargs.enable_thinking=false`。两个键都不设时不注入任何参数；硬编码模型分支不受影响 | 开思考时单步 3–9 s，且 token 预算可能全部被 reasoning 吃掉（`content` 为空、只剩 `reasoning_content`），`_extract_content` 会把思考文本当答案返回，门禁与报告都受影响；关闭后单步 0.6–3.5 s | `test_guards.py` guard 6（默认不注入 / `reasoning_effort` 直通 / `extra_body` 形状）PASS；同一代码路径实跑 `PONG`：默认 2.5 s → `none` 0.8 s → `enable_thinking=0` 0.6 s |
+| `test_guards.py` | 新增 guard 6，守卫总数 5 → 6 | 核心断言是"默认行为不变"，必须有守卫锁住 | 离线全 PASS（6 条） |
+
+参数有效性实测（同一端点 `http://127.0.0.1:8081/v1`、同一 prompt、`temperature=0`）：
+
+- 生效：`reasoning_effort=none` / `minimal`（最快）、顶层 `chat_template_kwargs.enable_thinking=false`（走 SDK 时必须用 `extra_body`，它不是 `create()` 的正式参数）。
+- 被端点忽略（无效）：`thinking={"type":"disabled"}`、prompt 前缀 `/no_think`。
+
+质量抽样（3 题，开思考 vs `reasoning_effort=none`，只看最终 `content`）：关闭后未见退化。追球问题两侧都答 $0.05；`moving_average([1,2,3,4], w=3)` 两侧都答 `[2.0, 3.0, 2.3333, 1.3333]`（该答案正确——探针脚本上一版把它判成 FAIL，是期望值写错）；180/198 那条开思考答 YES（0.9091 四舍五入到 2 位是 0.91），关闭后答 NO / 0.909，属判定口径差异而非能力差异。结论：默认关闭思考用于跑批量（省 2–4× 时间、且 `content` 一定非空），需要多步推理的判断类任务再单独开。
+
 ## 未做（登记为待办）
 
 
