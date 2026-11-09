@@ -225,6 +225,36 @@ For example, if you are running in Chinese set the language in the yaml:
 There is a lot of room to improve this codebase, so if you end up making changes and want to help the community, please feel free to share the changes you've made! We hope this tool helps you!
 
 
+## 🧭 科研之外的应用场景（本分支补充，2026-11-09）
+
+一句话定位：它本质是 **生成 → 真执行 → 按你写死的验收条件判分** 的循环。价值全部落在"验收条件可程序化"这一条上。它不训练模型，也不产生奖励信号；验证结果只决定两件事——这次算不算完成，以及把"程序算出的分"和"模型自己给的分"并排记下来（`judge-compare: True`）。
+
+输入只有两样：**topic + checks 文件**（`check(artifact, run_return) -> (passed, score)`，优先级 objective > human > llm）。
+
+| 场景 | 输入 | 门禁怎么写 | 产出 |
+|---|---|---|---|
+| 分类评测（工单、日志、标签） | 200 行 CSV + gold label | 预测文件行数必须 == 输入行数（防抽样）；accuracy 由文件算出；阈值 | 可复用评测脚本 + 逐条预测 + 声称值/计算值差值 |
+| 参数扫描 | 20 个样本 × 参数网格 | 网格必须全跑完；两个指标（如 p99 时间、输出体积）；与基准哈希一致 | 扫描脚本 + 结果表 |
+| 网络层网关 / 链路验证 | 路由清单 + 期望状态码表 + 注入的故障点 | 全部 N 条路由都要打到；实际状态码与期望表一致；注入 503 的那两条要看到重试次数与退避递增；DNS、证书链校验通过 | `gateway_report.json` + 断言脚本 |
+| 巡检与合规 | 100 项清单 + 历史报告 | 脚本覆盖全部 100 项；字段与历史报告一致；抽样人工核对通过 | 巡检脚本 + 覆盖率 |
+| 文档 / 合同抽取 | 一批文件 + 必抽字段 | 字段齐全 + 格式校验 + 抽样核对 | 抽取脚本 + 异常清单 |
+
+### 网络层网关验证：能验什么
+
+只有能写成脚本断言的部分：
+
+- 状态码与错误形状（裸 key 必须 401、带前缀才 200；503 的响应体字段形状）
+- 重试次数、退避序列、超时率、p99 延迟、连接复用
+- 覆盖率（必须打到全部 N 条路由，不能抽样）、SSE 分块到达顺序
+- 路由表 / VLAN / ACL 与期望表一致（读配置 → 跑命令 → 断言结果）
+- DNS 解析一致性、证书链、MTU 与分片行为
+
+不能验的：策略是否"合理"、某条 ACL 该不该存在——那是人的判断，写成 checks 之前它在系统里不存在。另外没有网络时只能验到打桩那一层（本分支 `test_guards.py` 的四条守卫就是打桩版，离线全 PASS）。
+
+### 什么情况下不值得用它
+
+单轮问答、一次性小任务、没有可程序化的验收条件——普通 chat 更快。如果 checks 只是"找报告里有没有几个章节名词"，它只防"没写"，防不了"写了但假的"；要防后者得写指标、覆盖率、哈希这类断言。
+
 ## 📜 License
 
 Source Code Licensing: Our project's source code is licensed under the MIT License. This license permits the use, modification, and distribution of the code, subject to certain conditions outlined in the MIT License.

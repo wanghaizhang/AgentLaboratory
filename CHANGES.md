@@ -95,6 +95,11 @@
 - `local_model_quick_demo.yaml` 显式设 `allow-hf-search: False`（该配置数据内嵌），并写明两种用法。
 - 验证：`test_guards.py`（4 条）+ `test_judge.py` + `test_yaml_keys.py` + `test_local_dispatch.py` 全 PASS；`parse_yaml` 对 quick demo 读到 `False`、对 `local_model_example.yaml` 读到 `True`。commit `d6b5fbf`。
 
+## 2026-11-09 · README 增加"科研之外的应用场景"一节
+
+- `README.md`（License 之前）新增一节：定位（生成 → 真执行 → 按写死的验收条件判分；无奖励信号，只决定算不算完成并记录声称值/计算值差值）、场景表（分类评测 / 参数扫描 / 网络层网关验证 / 巡检合规 / 文档抽取，各含输入·门禁写法·产出）、网络层网关能验与不能验的边界、什么情况下不值得用它。
+- 纯文档，无代码改动；与 `checks_example.py` 的接口描述一致（`check(artifact, run_return) -> (passed, score)`）。
+
 ## 未做（登记为待办）
 
 
