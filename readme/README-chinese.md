@@ -103,6 +103,8 @@ python ai_lab_repo.py --yaml-location "experiment_configs/local_model_example.ya
 
 如果目标不是论文，就不要保留评审表：`copilot-mode` + `task-notes` 是更省事的路线——人来做裁判，top-K 归档仍作为幸存者选择机制起作用。
 
+10 个具体场景例子（按「输入 → 断言 → 产出 → 失败长什么样」写）与跑法见 `README.md`「🧭 科研之外的应用场景」一节；可直接跑的 checks 示例在 [examples/checks_classification.py](../examples/checks_classification.py)。
+
 ## 🖥️ 安装
 
 
