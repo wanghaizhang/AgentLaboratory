@@ -106,6 +106,13 @@
 - 原因：原值是硬编码，慢端点下全量 500 题必超时（10 次调用 × 15–30 s 已超 120 s），只会得到 `[CODE EXECUTION ERROR]` 后进修复循环。默认值保持不变，行为默认不变。
 - 验证：`test_guards.py` guard 5 —— 默认 120 保持、`900` 生效、`"abc"` 回退、`"0"` 回退。
 
+## 2026-11-09 · README 应用场景补具体例子 + 可跑的 checks 示例
+
+- `README.md`「🧭 科研之外的应用场景」一节补 10 个具体例子，每个按 **输入 → 断言 → 产出 → 失败长什么样** 写（工单分类、网络层网关、ETL、参数扫描、巡检合规、文档抽取、补测试、API 客户端、配置校验器、作业批改），并新增「跑法（非科研任务）」小节：命令行只有 `--yaml-location`，裁判相关键是 `judge` / `checks` / `judge-checklist` / `judge-compare`；写明 objective 模式但 checks 加载失败时不会退出、会回退 LLM 自评（`ai_lab_repo.py:819-820`）。
+- 新增 `examples/checks_classification.py`：同一文件既是 yaml `checks:` 指向的文件（`check(artifact, run_return) -> (bool, float)`），也是离线演示（固定种子造 200 行 gold，跑两个对照 case）。纯标准库，不联网、不 pip。
+- 原因：此前只有场景表，没有"具体任务长什么样"，读者无法判断值不值得用它。
+- 验证：`py -3 examples/checks_classification.py` 实跑输出 —— A（198 行，声称 0.91）`pass=False score=0.000`；B（200 行，声称 0.82）`pass=True score=0.820`，两次 LLM 自评均为 0.930（diff `-0.930` / `-0.110`）。另验证 `judge.load_checks("examples/checks_classification.py")` 返回可调用对象、`check()` 正常执行。
+
 ## 未做（登记为待办）
 
 

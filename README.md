@@ -239,6 +239,118 @@ There is a lot of room to improve this codebase, so if you end up making changes
 | 巡检与合规 | 100 项清单 + 历史报告 | 脚本覆盖全部 100 项；字段与历史报告一致；抽样人工核对通过 | 巡检脚本 + 覆盖率 |
 | 文档 / 合同抽取 | 一批文件 + 必抽字段 | 字段齐全 + 格式校验 + 抽样核对 | 抽取脚本 + 异常清单 |
 
+### 具体例子（每个都写成：输入 → 断言 → 产出 → 失败长什么样）
+
+#### 例 1 · 工单/日志分类评测（最典型，且这个例子在仓库里可直接跑）
+
+- **输入**：`tickets.csv` 200 行，每行有文本和 gold label（4 类：billing / network / account / other）。
+- **断言**（checks 文件里写死）：① 预测文件行数必须 == 200（抽样不算完成）；② accuracy 由文件逐行算出，不采信模型打印的数字；③ `billing` 类 recall ≥ 0.80（关键类别不能悄悄差）；④ 声称值与计算值差 ≤ 0.02。
+- **产出**：`predictions.csv` + 可复用的评测脚本 + 声称值/计算值差值记录。
+- **实跑结果**（`py -3 examples/checks_classification.py`，离线打桩，无需 pip）：
+
+```
+[A: 198 rows] objective: pass=False score=0.000 | llm=0.930 diff=-0.930
+[B: 200 rows] objective: pass=True  score=0.820 | llm=0.930 diff=-0.110
+```
+
+读法：A 那轮模型自评 0.93，但文件只有 198 行 ⇒ `score=0` 且这一轮不进 top-K 池（门禁把整轮作废，不是扣分）。B 通过后仍然比自评低 0.11 —— 这个差值就是 `judge-compare: True` 记录下来的东西。这个项目的实际价值不在"它会写代码"，在"它不能靠嘴说完成"。
+
+#### 例 2 · 网络层网关 / 链路验证
+
+- **输入**：`routes.yaml`（12 条路由）+ `expected_status.csv`（逐条期望状态码）+ 故障注入清单（其中 2 条必须回 503）。
+- **断言**：12 条路由全部有记录（coverage == 12，不许抽样）；实际状态码逐条与期望表一致；注入 503 的那两条必须看到 `retry_count >= 3` 且退避序列单调递增（`[1, 2, 4]`）；裸 key 必须 401、带前缀才 200（鉴权分支单独验）；DNS 解析与证书链校验通过。
+
+```python
+def check(artifact, run_return):          # artifact = gateway_report.json
+    rep = json.load(open(artifact, encoding="utf-8"))
+    if len(rep["routes"]) != 12:
+        return False, 0.0                  # 漏一条 = 这一轮不算
+    mism = [r for r in rep["routes"] if r["status"] != EXPECTED[r["route"]]]
+    injected = [r for r in rep["routes"] if r["route"] in INJECTED_503]
+    if mism or not all(r["retry_count"] >= 3 for r in injected):
+        return False, 0.0
+    backoff = [r["backoff"] for r in injected]
+    if any(seq != sorted(seq) for seq in backoff):
+        return False, 0.0
+    return True, (12 - len(mism)) / 12
+```
+
+- **产出**：`gateway_report.json`（逐条：路由、实际状态码、重试次数、退避序列、延迟）+ 断言脚本。
+- **失败长什么样**：报告只有 11 条（漏跑 `/metrics`）⇒ 整轮作废；或 503 那两条 `retry_count = 1`（根本没重试）⇒ 整轮作废。这类失败恰恰是它最有用的地方：人眼看报告看不出漏了一条。
+
+#### 例 3 · 数据清洗 / ETL 脚本
+
+- **输入**：`raw_orders.csv` 5000 行 + 清洗规则（去重、类型、单位换算）。
+- **断言**：去重率落在给定区间（例 4.2%–5.0%，跑偏即失败）；输出列 dtype 与契约一致；**幂等**——连跑两次输出哈希必须相同；未知枚举值必须进 `exceptions.csv` 而不是被静默丢弃（丢了多少行要能算出来）。
+- **产出**：清洗脚本 + `exceptions.csv` + 行数守恒报告。
+
+#### 例 4 · 参数扫描
+
+- **输入**：20 个样本 × 网格（3 个 prompt 版本 × 2 个温度 = 60 次运行）。
+- **断言**：结果表必须 60 行（网格全跑）；p99 延迟与输出体积由逐条记录算出；与基线 run 的 3 个固定样本输出逐字符一致（回归保护）。
+- **产出**：`sweep.csv` + 汇总脚本。失败示例：表只有 51 行（超时被跳过）⇒ 门禁要求跳过的样本必须列在 `skipped.json`，否则不通过。
+
+#### 例 5 · 巡检与合规
+
+- **输入**：100 项清单 + 上月报告。
+- **断言**：脚本覆盖全部 100 项（覆盖率由脚本自己算，不接受"已完成"）；字段命名与历史报告一致（列名集合相等）；上月 3 个已知异常项本次必须仍被报出（防退化）；每项都要有证据（命令输出或截图路径）。
+- **产出**：巡检脚本 + 覆盖率 + 异常清单。
+
+#### 例 6 · 文档 / 合同抽取
+
+- **输入**：40 份文件 + 必抽字段（甲方、金额、期限、违约条款）。
+- **断言**：40 份全部有输出；金额字段必须可解析为数字且与原文出现的数字一致（幻觉直接判负）；缺失字段必须写 `null` 而不是省略；抽样 10 份人工核对（这部分走 human judge，是 checklist 路径，不是 objective）。
+- **产出**：`extract.jsonl` + 异常清单 + 抽检记录。
+
+#### 例 7 · 补测试 / 修 bug
+
+- **输入**：一个失败的 pytest 用例 + 源码。
+- **断言**：pytest 全绿；覆盖率 ≥ 80%；**测试文件本身未被改动**（哈希与基线一致——防"改测试让绿灯"这类作弊）；断言值必须来自 fixture，不许硬编码在代码里。
+- **产出**：patch + 测试报告。
+
+#### 例 8 · API 客户端封装
+
+- **输入**：可控的 mock server（逐条打状态码）+ 错误分类表。
+- **断言**：429 → 重试且退避是 `[1, 2, 4]`；401 → 不重试且立即返回错误类型；超时率 < 5%；连接复用（同一 session 计数，不能每次新建）；SSE 分块按序到达。
+- **产出**：`client.py` + mock 跑出的 `calls.jsonl`。
+
+#### 例 9 · 配置 / 契约校验器
+
+- **输入**：30 份配置，其中 8 份是已知坏的（黄金样本）。
+- **断言**：8 份必须全部报错（漏报 = 0）；22 份好配置误报 = 0；每条错误带字段路径，能定位到行。
+- **产出**：`validator.py` + `errors.jsonl`。
+
+#### 例 10 · 作业 / 任务自动批改
+
+- **输入**：20 份提交 + 标准输入输出对。
+- **断言**：在隔离目录跑通且输出逐条比对；超时（`EXECUTE_TIMEOUT`）视为不通过而不是报错；越界写盘或访问网络视为不通过。
+- **产出**：`grades.csv`（每份：通过/失败 + 失败原因）。
+
+**这 10 个例子满足的三个条件**（决定值不值得用它）：产物可枚举、断言可程序化、失败可归因。三者缺任何一个，就退回普通 chat。
+
+### 跑法（非科研任务，键名以 `parse_yaml` 为准）
+
+命令行只有 `--yaml-location`，其余全部在 yaml 里：
+
+```yaml
+research-topic: "对 tickets.csv 做四分类并输出逐条预测"
+judge: objective                      # objective > human > llm
+checks: "examples/checks_classification.py"   # 该文件须定义 check(artifact, run_return)
+judge-compare: True                   # 把程序分与模型自评并排记录（差值写进 record）
+judge-checklist: ["抽 10 份核对金额字段"]      # 仅当 objective 不可用时才走到 human
+allow-hf-search: false                # 不碰 HuggingFace；数据走 notes 或本地 JSON 目录
+compile-latex: false
+copilot-mode: "false"
+task-notes:
+  running experiments:
+    - 'Write predictions.csv with columns id,pred; do not sample.'
+    - 'Print accuracy=<value> computed from the file, not estimated.'
+```
+
+`python ai_lab_repo.py --yaml-location "experiment_configs/xxx.yaml"`
+
+一个容易踩的点：`judge: objective` 但 checks 文件加载失败时不会退出，会打印 `[judge] objective 模式但没有可执行的 checks 文件，实际会回退到 LLM 自评`（[ai_lab_repo.py:819-820](ai_lab_repo.py#L819-L820)）——这时跑的还是自评，分数好看但没有门禁。
+
 ### 网络层网关验证：能验什么
 
 只有能写成脚本断言的部分：
