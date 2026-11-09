@@ -124,9 +124,26 @@ def test_local_catalog():
     print("PASS guard 4 (HFDataSearch catalog): local JSON catalog works with no Hub access")
 
 
+def test_exec_timeout_override():
+    """exec_timeout: EXECUTE_TIMEOUT 可覆盖，无效值/非正数回退默认，不抛异常。"""
+    import ai_lab_repo as lab
+
+    os.environ.pop("EXECUTE_TIMEOUT", None)
+    assert lab.exec_timeout(120) == 120, "default must be preserved when the env var is unset"
+    os.environ["EXECUTE_TIMEOUT"] = "900"
+    assert lab.exec_timeout(120) == 900, "valid override must apply"
+    os.environ["EXECUTE_TIMEOUT"] = "abc"
+    assert lab.exec_timeout(60) == 60, "invalid value must fall back to the default"
+    os.environ["EXECUTE_TIMEOUT"] = "0"
+    assert lab.exec_timeout(60) == 60, "non-positive value must fall back to the default"
+    os.environ.pop("EXECUTE_TIMEOUT", None)
+    print("PASS guard 5 (exec_timeout): EXECUTE_TIMEOUT overrides per-phase defaults; invalid/0 falls back")
+
+
 if __name__ == "__main__":
     test_hf_index_guard()
     test_arxiv_guard()
     test_local_retry_backoff()
     test_local_catalog()
+    test_exec_timeout_override()
     print("ALL GUARD TESTS PASS (offline, no network)")

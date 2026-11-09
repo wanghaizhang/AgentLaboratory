@@ -100,6 +100,12 @@
 - `README.md`（License 之前）新增一节：定位（生成 → 真执行 → 按写死的验收条件判分；无奖励信号，只决定算不算完成并记录声称值/计算值差值）、场景表（分类评测 / 参数扫描 / 网络层网关验证 / 巡检合规 / 文档抽取，各含输入·门禁写法·产出）、网络层网关能验与不能验的边界、什么情况下不值得用它。
 - 纯文档，无代码改动；与 `checks_example.py` 的接口描述一致（`check(artifact, run_return) -> (passed, score)`）。
 
+## 2026-11-09 · execute_code 超时改为可配（EXECUTE_TIMEOUT）
+
+- `ai_lab_repo.py` 新增 `exec_timeout(default)`：`EXECUTE_TIMEOUT` 环境变量覆盖单次执行超时；无效值或非正数回退默认，不抛异常。两处调用点改为 `exec_timeout(60)`（data preparation）与 `exec_timeout(120)`（running experiments）。
+- 原因：原值是硬编码，慢端点下全量 500 题必超时（10 次调用 × 15–30 s 已超 120 s），只会得到 `[CODE EXECUTION ERROR]` 后进修复循环。默认值保持不变，行为默认不变。
+- 验证：`test_guards.py` guard 5 —— 默认 120 保持、`900` 生效、`"abc"` 回退、`"0"` 回退。
+
 ## 未做（登记为待办）
 
 

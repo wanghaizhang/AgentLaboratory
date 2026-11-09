@@ -17,6 +17,18 @@ RESEARCH_DIR_PATH = "MATH_research_dir"
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
+def exec_timeout(default):
+    """EXECUTE_TIMEOUT 可覆盖单次代码执行超时；无效或非正数回退默认值（不崩）。"""
+    v = os.getenv("EXECUTE_TIMEOUT")
+    if not v:
+        return default
+    try:
+        n = int(v)
+    except Exception:
+        return default
+    return n if n > 0 else default
+
+
 class LaboratoryWorkflow:
     def __init__(self, research_topic, openai_api_key, max_steps=100, num_papers_lit_review=5, agent_model_backbone=f"{DEFAULT_LLM_BACKBONE}", notes=list(), human_in_loop_flag=None, compile_pdf=True, mlesolver_max_steps=3, papersolver_max_steps=5, paper_index=0, except_if_fail=False, parallelized=False, lab_dir=None, lab_index=0, agentRxiv=False, agentrxiv_papers=5, judge=None, judge_compare=False, allow_hf_search=True, hf_catalog=None):
         """
@@ -371,7 +383,7 @@ class LaboratoryWorkflow:
                 if self.verbose: print("#"*40, f"\nThe following is dialogue produced by the SW Engineer: {dialogue}", "\n", "#"*40)
             if "```SUBMIT_CODE" in resp:
                 final_code = extract_prompt(resp, "SUBMIT_CODE")
-                code_resp = execute_code(final_code, timeout=60)
+                code_resp = execute_code(final_code, timeout=exec_timeout(60))
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
                 swe_feedback += f"\nCode Response: {code_resp}\n"
                 if "[CODE EXECUTION ERROR]" in code_resp:
@@ -405,7 +417,7 @@ class LaboratoryWorkflow:
             if "```python" in resp:
                 code = extract_prompt(resp, "python")
                 code = self.ml_engineer.dataset_code + "\n" + code
-                code_resp = execute_code(code, timeout=120)
+                code_resp = execute_code(code, timeout=exec_timeout(120))
                 ml_command = f"Code produced by the ML agent:\n{code}"
                 ml_feedback += f"\nCode Response: {code_resp}\n"
                 if self.verbose: print("!"*100, "\n", f"CODE RESPONSE: {code_resp}")
